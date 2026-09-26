@@ -53,15 +53,39 @@ var DB = (function () {
 
   function word(w) { return words[w] || null; }
 
-  /** Картинка слова (с учётом «детёнышей»): {img, small} */
+  /** Картинка слова (с учётом «детёнышей»): {img (код или null — тогда только замена из интернета), small} */
   function imageOf(w) {
     var e = typeof w === 'string' ? words[w] : w;
     if (!e) return null;
     if (e.of) {
       var parent = words[e.of];
-      return parent ? { img: parent.img, small: true } : null;
+      return { img: parent && parent.img || null, small: true, of: e.of };
     }
-    return e.img ? { img: e.img, small: !!e.small } : null;
+    return { img: e.img || null, small: !!e.small };
+  }
+
+  /** Добавить слово (своё или от ИИ), если такого ещё нет. Возвращает запись словаря. */
+  function addWord(e) {
+    if (!e || !e.w) return null;
+    if (words[e.w]) return words[e.w];
+    e.adj = e.adj || []; e.v = e.v || [];
+    if (e.img && e.img.indexOf('of:') === 0) { e.of = e.img.slice(3); e.small = true; }
+    if (e.g === 'мн' || e.mass) e.noCount = true;
+    words[e.w] = e;
+    return e;
+  }
+
+  /** Добавить (или заменить) тему, например созданную с помощью ИИ */
+  function addTheme(t) {
+    removeTheme(t.id);
+    T(t);
+    return byId[t.id];
+  }
+  function removeTheme(id) {
+    if (!byId[id]) return;
+    var i = themes.indexOf(byId[id]);
+    if (i >= 0) themes.splice(i, 1);
+    delete byId[id];
   }
 
   /** Притяжательное прилагательное в нужном роде: кошачий → кошачья / кошачье / кошачьи */
@@ -158,6 +182,6 @@ var DB = (function () {
 
   return {
     W: W, T: T, word: word, words: words, themes: themes, byId: byId, problems: problems,
-    imageOf: imageOf, poss: poss, acc: acc, extraAdj: extraAdj, count: count, search: search, guessTheme: guessTheme
+    imageOf: imageOf, addWord: addWord, addTheme: addTheme, removeTheme: removeTheme, poss: poss, acc: acc, extraAdj: extraAdj, count: count, search: search, guessTheme: guessTheme
   };
 })();

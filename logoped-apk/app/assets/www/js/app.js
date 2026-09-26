@@ -32,7 +32,8 @@
     orgShort: 'Детский сад № 1 «Шатлык» · Набережные Челны',
     city: 'Набережные Челны', teacher: '', position: 'учитель-логопед', group: '',
     fontSize: 14, answersOnSheet: false, captions: true, uiScale: 16,
-    include: { title: true, info: true, techcard: true, conspect: true, home: true, keys: true, sources: true, worksheet: true }
+    include: { title: true, info: false, techcard: true, conspect: true, home: true, extra: true, keys: true, sources: true, worksheet: true }, ver: 2,
+    ai: { provider: '', keys: {}, models: {}, base: '', imageModel: '', customImages: false }
   };
   function defTech() { var o = {}; METHODS.TECH.forEach(function (t) { o[t.id] = t.on; }); return o; }
   function defState() {
@@ -44,10 +45,18 @@
   }
   var S = load('lp.settings', DEF_SETTINGS);
   S.include = Object.assign({}, DEF_SETTINGS.include, S.include || {});
+  if ((S.ver || 1) < 2) { S.include.info = false; S.ver = 2; }
   var ST = load('lp.state', defState());
   ST.tech = Object.assign(defTech(), ST.tech || {});
   var customWords = load('lp.customWords', {});
-  Object.keys(customWords).forEach(function (w) { if (!DB.words[w]) DB.words[w] = customWords[w]; });
+  Object.keys(customWords).forEach(function (w) { DB.addWord(customWords[w]); });
+  var aiStore = load('lp.aiThemes', { themes: {} });
+  Object.keys(aiStore.themes || {}).forEach(function (id) {
+    var t = aiStore.themes[id];
+    try { DB.addTheme(t); } catch (e) { if (window.console) console.warn('ai theme', id, e); }
+  });
+  S.ai = Object.assign({}, DEF_SETTINGS.ai, S.ai || {});
+  AI.configure(S.ai, function (c) { S.ai = c; saveAll(); });
   function saveAll() { store('lp.settings', S); store('lp.state', ST); }
 
   /* ---------- DOM-помощники ---------- */
@@ -122,12 +131,18 @@
   function selWords() {
     return allWords().filter(function (e) { return (ST.off || []).indexOf(e.w) < 0 && IMG.hasPicture(e); });
   }
+  function extraKey() { return ST.themeId + '|' + (ST.customTitle || '') + '|' + (ST.sound || '') + '|' + ST.age; }
+  function themeIcon(t) {
+    if (t && t.icon) return codeSrc(t.icon);
+    var e = t && DB.word(t.words[0]);
+    return (e && wordThumb(e)) || codeSrc('1F5E3');
+  }
   function config() {
     return {
       theme: theme(), words: selWords(), age: ST.age, form: ST.form, kind: ST.kind, direction: ST.direction,
       sound: ST.sound, sound2: ST.sound ? ST.sound2 : null, duration: ST.duration || 0, conclusion: ST.conclusion,
       tech: Object.assign({}, ST.tech, { sinkvein: ST.tech.sinkvein && ST.age === '6' }), captions: S.captions !== false,
-      seed: ST.seed, reroll: ST.reroll || {}, date: Date.now()
+      seed: ST.seed, reroll: ST.reroll || {}, date: Date.now(), extra: ST.extra && ST.extra.key === extraKey() ? ST.extra : null
     };
   }
   function codeSrc(code) {
@@ -141,7 +156,7 @@
     return 'img/c/' + code + '.svg';
   }
   function wordThumb(e) {
-    var ov = IMG.getOverride(e.w);
+    var ov = IMG.getOverride(e.w) || (e.of ? IMG.getOverride(e.of) : null);
     if (ov && ov.c) return ov.c;
     var io = DB.imageOf(e);
     return io ? codeSrc(io.img) : '';
@@ -175,9 +190,9 @@
     var dur = LESSON.duration(L);
 
     // 1. Тема
-    app.appendChild(card(1, 'Лексическая тема', 'месяц: ' + monthName(baseTheme().month), [
+    app.appendChild(card(1, 'Лексическая тема', baseTheme().ai ? 'своя тема (ИИ)' : 'месяц: ' + monthName(baseTheme().month), [
       h('button', { class: 'theme-pick', onclick: openThemePicker }, [
-        h('img', { src: codeSrc(baseTheme().icon), alt: '' }),
+        h('img', { src: themeIcon(baseTheme()), alt: '' }),
         h('div', {}, [h('div', { class: 't', text: th.title }), h('div', { class: 'm', text: allWords().length + ' слов · обобщение: ' + baseTheme().cat[1] + (ST.customTitle ? ' · словарь темы «' + baseTheme().title + '»' : '') })]),
         h('span', { class: 'chev', text: 'Сменить ›' })
       ])
@@ -313,18 +328,39 @@
       var q = search.value.trim().toLowerCase();
       list.innerHTML = '';
       var order = [9, 10, 11, 12, 1, 2, 3, 4, 5];
+      var mine = DB.themes.filter(function (t) { return t.ai && (!q || t.title.toLowerCase().indexOf(q) >= 0); });
+      if (mine.length) {
+        list.appendChild(h('div', { class: 'month', text: 'Мои темы (созданы с ИИ)' }));
+        list.appendChild(h('div', { class: 'tgrid' }, mine.map(function (t) {
+          return h('div', { class: 'tcard-wrap' }, [
+            h('button', { class: 'tcard' + (t.id === ST.themeId ? ' on' : ''), onclick: function () { pickTheme(t.id); } }, [h('img', { src: themeIcon(t), alt: '' }), h('span', { text: t.title })]),
+            h('button', { class: 'tdel', 'aria-label': 'Удалить тему', text: '✕', onclick: function () {
+              snack('Удалить тему «' + t.title + '»?', [['Удалить', function () { deleteAiTheme(t.id); draw(); }]]);
+            } })
+          ]);
+        })));
+      }
       order.forEach(function (m) {
-        var ts = DB.themes.filter(function (t) { return t.month === m && (!q || t.title.toLowerCase().indexOf(q) >= 0 || t.words.some(function (w) { return w.indexOf(q) === 0; })); });
+        var ts = DB.themes.filter(function (t) { return !t.ai && t.month === m && (!q || t.title.toLowerCase().indexOf(q) >= 0 || t.words.some(function (w) { return w.indexOf(q) === 0; })); });
         if (!ts.length) return;
         list.appendChild(h('div', { class: 'month', text: monthName(m) }));
         list.appendChild(h('div', { class: 'tgrid' }, ts.map(function (t) {
-          return h('button', { class: 'tcard' + (t.id === ST.themeId ? ' on' : ''), onclick: function () {
-            ST.themeId = t.id; ST.customTitle = ''; ST.off = []; ST.extraWords = []; ST.taskIds = null; ST.seed = String(Date.now());
-            closeSheet(); changed();
-          } }, [h('img', { src: codeSrc(t.icon), alt: '' }), h('span', { text: t.title })]);
+          return h('button', { class: 'tcard' + (t.id === ST.themeId ? ' on' : ''), onclick: function () { pickTheme(t.id); } }, [h('img', { src: themeIcon(t), alt: '' }), h('span', { text: t.title })]);
         })));
       });
       info.innerHTML = '';
+      if (q.length > 2) {
+        var title = U.cap(search.value.trim());
+        info.appendChild(h('div', { class: 'aibox' }, AI.ready() ? [
+          h('b', { text: '✨ Новая тема «' + title + '» с помощью ИИ' }),
+          h('div', { class: 'small muted', text: 'ИИ подберёт 10–12 слов строго по теме с падежными формами, загадки, предложения, рассказ, гимнастики; картинки — из OpenMoji, ARASAAC' + (AI.canImage() ? ' или нарисует ИИ' : '') + '. Вы всё проверите перед сохранением.' }),
+          h('button', { class: 'btn sm primary', style: 'margin-top:8px', html: ICON.wand + 'Создать тему', onclick: function () { createAiTheme(title); } })
+        ] : [
+          h('b', { text: '✨ Создать тему «' + title + '» с помощью ИИ' }),
+          h('div', { class: 'small muted', text: 'Подключите бесплатный ИИ (Pollinations, OpenRouter, Groq, Gemini…) — это займёт пару минут.' }),
+          h('button', { class: 'btn sm soft', style: 'margin-top:8px', text: 'Подключить ИИ', onclick: function () { openAiSettings(); } })
+        ]));
+      }
       if (q.length > 3) {
         var g = DB.guessTheme(q);
         if (g) info.appendChild(h('div', { class: 'okbox' }, [
@@ -360,11 +396,17 @@
       if (!DB.word(v)) {
         res.appendChild(h('div', { class: 'opt', onclick: function () {
           var w = v.replace(/\s+/g, ' ');
-          customWords[w] = { w: w, g: 'м', adj: [], v: [], custom: true };
-          DB.words[w] = customWords[w];
+          customWords[w] = DB.addWord({ w: w, g: 'м', adj: [], v: [], custom: true });
           store('lp.customWords', customWords);
           addWord(w);
-          openImageDialog(DB.word(w));
+          if (!AI.ready()) { openImageDialog(DB.word(w)); return; }
+          busy('ИИ подбирает формы слова «' + w + '»…');
+          AI.fillWord(w).then(function (e) {
+            Object.assign(customWords[w], { gs: e.gs, pl: e.pl, gp: e.gp, g: e.g, dim: e.dim, en: e.en, anim: e.anim, adj: e.adj, v: e.v, poss: e.poss, noCount: e.noCount });
+            store('lp.customWords', customWords);
+          }).catch(function (err) { snack('Формы слова не получены: ' + err.message); }).then(function () {
+            busy(false); changed(); openImageDialog(DB.word(w));
+          });
         } }, [h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: '+ Своё слово «' + v + '»' }), h('span', { text: 'Картинку подберём в интернете или из галереи' })])]));
       }
     }
@@ -478,6 +520,57 @@
     ]));
     body.appendChild(og);
 
+    // OpenMoji: встроенные и из интернета (тот же стиль, что у картинок программы)
+    var mq = h('input', { type: 'search', value: e.en || '', placeholder: 'по-английски: cat, ball, rocket…' });
+    var mg = h('div', { class: 'pgrid', style: 'margin-top:8px' });
+    function omOverride(hit) {
+      if (!hit.offline) return NET.openmojiFor(hit.hex);
+      return Promise.all([IMG.svgText(hit.hex, 'c'), IMG.svgText(hit.hex, 'b').catch(function () { return null; })]).then(function (r) {
+        var du = function (t) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(t).replace('<svg ', '<svg width="512" height="512" ')); };
+        return { c: du(r[0]), b: r[1] ? du(r[1]) : null, src: 'openmoji', id: hit.hex, credit: 'OpenMoji (openmoji.org), CC BY-SA 4.0' };
+      });
+    }
+    function mSearch() {
+      mg.innerHTML = '';
+      var hits = NET.openmojiSearch(mq.value, 24);
+      if (!hits.length) { mg.innerHTML = '<div class="muted small">Ничего не найдено. Введите название по-английски.</div>'; return; }
+      hits.forEach(function (hit) {
+        if (!hit.offline && !NET.online()) return;
+        mg.appendChild(h('button', { onclick: function () {
+          busy('Загружаю картинку…');
+          omOverride(hit).then(apply).catch(function (err) { busy(false); snack('Ошибка: ' + err.message); });
+        } }, [h('img', { src: hit.offline ? 'img/c/' + hit.hex + '.svg' : NET.openmojiUrl(hit.hex), loading: 'lazy', alt: '' }), hit.ann.slice(0, 22)]));
+      });
+    }
+    body.appendChild(h('div', { class: 'label', text: 'OpenMoji — в стиле картинок программы' }));
+    body.appendChild(h('div', { class: 'row-gap' }, [h('div', { style: 'flex:1' }, [mq]), h('button', { class: 'btn soft sm', text: 'Найти', onclick: mSearch }),
+      AI.ready() ? h('button', { class: 'btn ghost sm', text: 'Перевести', onclick: function () {
+        busy('Перевожу…');
+        AI.translate(e.w).then(function (en) { busy(false); mq.value = en; mSearch(); }).catch(function (err) { busy(false); snack(err.message); });
+      } }) : null]));
+    body.appendChild(mg);
+
+    // Рисунок ИИ
+    body.appendChild(h('div', { class: 'label', text: 'Нарисовать с помощью ИИ' }));
+    if (AI.canImage()) {
+      var pq = h('input', { type: 'text', value: e.en || e.w });
+      var draw = function (style) {
+        busy('ИИ рисует «' + e.w + '»… (до минуты)');
+        AI.image(AI.imagePrompt(pq.value || e.w, style)).then(function (d) { return IMG.normalizeDataUrl(d, 640); }).then(function (d) {
+          var ov = IMG.getOverride(e.w) || {};
+          apply(style === 'bw' ? { c: ov.c || d, b: d, src: 'ai', credit: 'рисунок ИИ (' + AI.label() + ')' } : { c: d, b: ov.b || null, src: 'ai', credit: 'рисунок ИИ (' + AI.label() + ')' });
+        }).catch(function (err) { busy(false); snack(err.message, [['Настройки ИИ', function () { openAiSettings(); }]], 10000); });
+      };
+      body.appendChild(h('div', { class: 'row-gap' }, [h('div', { style: 'flex:1' }, [pq])]));
+      body.appendChild(h('div', { class: 'row-gap', style: 'margin-top:6px' }, [
+        h('button', { class: 'btn soft sm', html: ICON.wand + 'Цветная картинка', onclick: function () { draw('color'); } }),
+        h('button', { class: 'btn soft sm', html: ICON.wand + 'Раскраска (контур)', onclick: function () { draw('bw'); } })
+      ]));
+    } else {
+      body.appendChild(h('div', { class: 'small muted' }, ['Рисовать умеет Pollinations (бесплатные кредиты). ',
+        h('button', { class: 'btn sm ghost', text: 'Подключить', onclick: function () { openAiSettings(); } })]));
+    }
+
     // Галерея
     var file = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
     file.addEventListener('change', function () {
@@ -493,6 +586,7 @@
     body.appendChild(h('div', { class: 'small muted', style: 'margin-top:10px', text: 'Выбранная картинка сохраняется в приложении и используется во всех заданиях с этим словом (и в следующих занятиях).' }));
     openSheet('Картинка: ' + e.w, body);
     if (NET.online()) aSearch();
+    if (mq.value) mSearch();
   }
 
   /* ---------- сборка занятия ---------- */
@@ -574,6 +668,7 @@
         ]));
       });
     } else if (curTab === 'plan') {
+      app.appendChild(aiExtrasCard());
       app.appendChild(h('div', { class: 'card' }, [h('div', { class: 'small muted', text: 'Цель' }), h('div', { text: P.goal })]));
       P.stages.forEach(function (s) {
         app.appendChild(h('div', { class: 'stage' }, [
@@ -587,13 +682,31 @@
         }))));
       });
     } else if (curTab === 'card') {
-      app.appendChild(h('div', { class: 'card tc' }, P.stages.map(function (s) {
-        return h('div', { class: 'row' }, [
-          h('div', {}, [h('b', { text: s.n + '. ' + s.name + ' — ' + s.min + ' мин' })]),
-          h('div', { text: 'Задачи: ' + s.aim }), h('div', { text: 'Логопед: ' + s.teacher }), h('div', { text: 'Дети: ' + s.children }),
-          h('div', { class: 'muted', text: 'Методы: ' + s.methods + '. Результат: ' + s.result })
-        ]);
-      }).concat([h('div', { class: 'row' }, [h('b', { text: 'Итого: ' + U.min(P.total) })])])));
+      var pass = h('details', { class: 'card pass' }, [h('summary', {}, [h('b', { text: 'Паспорт занятия' }), h('span', { class: 'small muted', text: ' — педагог, цель, задачи, результаты, оборудование' })])]);
+      var kvp = h('div', { class: 'kv' });
+      EXPORT.passport(R.L, P, S, R.tasks).forEach(function (r) {
+        kvp.appendChild(h('div', { class: 'k', text: r[0] }));
+        kvp.appendChild(Array.isArray(r[1])
+          ? h('div', {}, r[1].map(function (x) { return typeof x === 'string' ? h('div', { text: x }) : h('div', {}, [h('b', { text: x[0][0] })]); }))
+          : h('div', { text: r[1] }));
+      });
+      pass.appendChild(kvp);
+      app.appendChild(pass);
+      var col = function (label, list) {
+        return h('div', { class: 'col' }, [h('div', { class: 'cl', text: label })].concat(list.map(function (x) {
+          return h('p', { class: (x.b ? 'b' : '') + (x.i ? ' i' : ''), text: x.t });
+        })));
+      };
+      LESSON.card(P).forEach(function (ph) {
+        app.appendChild(h('div', { class: 'phase' }, [h('span', { text: ph.n + '. ' + ph.name }), h('span', { class: 'min', text: U.min(ph.min) })]));
+        ph.stages.forEach(function (st) {
+          app.appendChild(h('div', { class: 'card tc' }, [
+            h('div', { class: 'tch' }, [h('b', { text: st.n + '. ' + st.name }), h('span', { class: 'min', text: U.min(st.min) })]),
+            col('Задачи этапа', [{ t: st.aim }]), col('Деятельность учителя-логопеда', st.teacher), col('Деятельность детей', st.children),
+            col('Методы и приёмы', [{ t: st.methods }]), col('Планируемый результат', [{ t: st.result }])
+          ]));
+        });
+      });
     } else if (curTab === 'info') {
       var kv = h('div', { class: 'card kv' });
       function add(k, v) { kv.appendChild(h('div', { class: 'k', text: k })); kv.appendChild(v); }
@@ -719,7 +832,7 @@
       body.appendChild(h('div', { class: 'opt', onclick: function () {
         ST = Object.assign(defState(), x.cfg); saveAll(); closeSheet(); renderForm(); buildLesson();
       } }, [
-        h('img', { src: codeSrc((DB.byId[x.cfg.themeId] || {}).icon), style: 'width:40px;height:40px' }),
+        h('img', { src: DB.byId[x.cfg.themeId] ? themeIcon(DB.byId[x.cfg.themeId]) : codeSrc('1F5E3'), style: 'width:40px;height:40px' }),
         h('div', { class: 'txt' }, [h('b', { text: x.title }), h('span', { text: U.dateShort(new Date(x.date)) + ' · ' + (a ? a.years + ' лет' : '') + ' · ' + (x.cfg.sound ? 'звук ' + PH.BY_ID[x.cfg.sound].name : 'без звука') })])
       ]));
     });
@@ -763,6 +876,269 @@
     } })]);
   }
 
+  /* ---------- темы, созданные с помощью ИИ ---------- */
+  function pickTheme(id) {
+    ST.themeId = id; ST.customTitle = ''; ST.off = []; ST.extraWords = []; ST.taskIds = null; ST.seed = String(Date.now()); ST.extra = null;
+    while (sheets.length) closeSheet();
+    changed();
+  }
+  function aiWordsOf(t) {
+    var list = t.words.slice();
+    ((t.pairs && t.pairs.baby && t.pairs.baby.items) || []).forEach(function (p) { list.push(p[1]); });
+    return U.uniq(list).map(DB.word).filter(function (e) { return e && e.ai; });
+  }
+  function saveAiTheme(t) {
+    var st = load('lp.aiThemes', { themes: {} });
+    st.themes = st.themes || {};
+    var first = DB.word(t.words[0]);
+    t.icon = first && DB.imageOf(first) && DB.imageOf(first).img && DB.imageOf(first).img.indexOf('x:') !== 0 && !first.of ? DB.imageOf(first).img : null;
+    st.themes[t.id] = t;
+    store('lp.aiThemes', st);
+    aiWordsOf(t).forEach(function (e) { customWords[e.w] = e; });
+    store('lp.customWords', customWords);
+  }
+  function deleteAiTheme(id) {
+    var st = load('lp.aiThemes', { themes: {} });
+    if (st.themes) delete st.themes[id];
+    store('lp.aiThemes', st);
+    DB.removeTheme(id);
+    if (ST.themeId === id) { ST.themeId = DB.themes[0].id; ST.extra = null; }
+    saveAll();
+    if (screen === 'form') renderForm();
+    snack('Тема удалена.');
+  }
+
+  /** Картинки для новых слов: OpenMoji (встроенные → из интернета), ARASAAC, рисунок ИИ */
+  function assignPictures(list, progress) {
+    var done = 0, ok = 0;
+    var chain = Promise.resolve();
+    list.forEach(function (e) {
+      chain = chain.then(function () {
+        if (IMG.hasPicture(e)) return null;
+        var hits = e.en ? NET.openmojiSearch(e.en, 3) : [];
+        var best = hits[0] && hits[0].score >= 60 ? hits[0] : null;
+        if (best && best.offline) { e.img = best.hex; return null; }
+        if (!NET.online()) return null;
+        var p = best ? NET.openmojiFor(best.hex).then(function (v) { return IMG.setOverride(e.w, v); }) : Promise.reject(new Error('нет'));
+        return p.catch(function () { return NET.arasaacFor(e.w).then(function (v) { return IMG.setOverride(e.w, v); }); })
+          .catch(function () {
+            if (!AI.canImage()) return null;
+            return AI.image(AI.imagePrompt(e.en || e.w, 'color')).then(function (d) { return IMG.normalizeDataUrl(d, 600); })
+              .then(function (c) { return IMG.setOverride(e.w, { c: c, b: null, src: 'ai', credit: 'рисунок ИИ (' + AI.label() + ')' }); });
+          })
+          .catch(function () { return null; });
+      }).then(function () {
+        done++;
+        if (IMG.hasPicture(e)) ok++;
+        if (progress) progress(done, list.length, e);
+      });
+    });
+    return chain.then(function () { return ok; });
+  }
+
+  function createAiTheme(title) {
+    if (!AI.ready()) { openAiSettings(); return; }
+    busy('ИИ составляет словарь темы «' + title + '»… Обычно это 20–90 секунд.');
+    AI.makeTheme(title, ST.age).then(function (res) {
+      res.newWords.forEach(function (e) { DB.addWord(e); });
+      DB.addTheme(res.theme);
+      var need = res.theme.words.map(DB.word).filter(function (e) { return e && !IMG.hasPicture(e); });
+      busy('Подбираю картинки…', 0);
+      return assignPictures(need, function (d, n, e) { busy('Подбираю картинки: ' + e.w, d / n); }).then(function () { return res; });
+    }).then(function (res) {
+      busy(false);
+      openAiThemeReview(res.theme, res.notes);
+    }).catch(function (err) {
+      busy(false);
+      snack('Не удалось создать тему: ' + err.message, [['Настройки ИИ', function () { openAiSettings(); }]], 12000);
+    });
+  }
+
+  function openAiThemeReview(t, notes) {
+    var body = h('div');
+    var saved = false;
+    function draw() {
+      body.innerHTML = '';
+      var ws = t.words.map(DB.word).filter(Boolean);
+      var missing = ws.filter(function (e) { return !IMG.hasPicture(e); });
+      body.appendChild(h('div', { class: 'okbox', text: 'Обобщение: ' + t.cat[1] + '. Слов: ' + ws.length + '; загадок: ' + t.riddles.length + '; предложений: ' + t.sents.length +
+        (t.story ? '; есть рассказ-образец' : '') + (t.finger ? '; пальчиковая гимнастика' : '') + (t.move ? '; физминутка' : '') + '.' }));
+      if (missing.length) body.appendChild(h('div', { class: 'warnbox', text: 'Нет картинки: ' + missing.map(function (e) { return e.w; }).join(', ') + '. Нажмите на слово, чтобы подобрать картинку, иначе оно не попадёт в задания.' }));
+      body.appendChild(h('div', { class: 'label', text: 'Словарь темы (нажмите — сменить картинку, ✕ — убрать слово)' }));
+      body.appendChild(h('div', { class: 'chips' }, ws.map(function (e) {
+        var pic = IMG.hasPicture(e);
+        return h('span', { class: 'chip' + (pic ? ' on' : ' off') }, [
+          h('button', { class: 'chip-in', onclick: function () { openImageDialog(e, draw); } }, [wordThumb(e) ? h('img', { src: wordThumb(e), alt: '' }) : null, e.w + (e.gp ? ' · много ' + e.gp : '')]),
+          h('button', { class: 'chip-x', 'aria-label': 'Убрать', text: '✕', onclick: function () {
+            if (t.words.length <= 4) { snack('В теме должно остаться хотя бы 4 слова.'); return; }
+            t.words = t.words.filter(function (w) { return w !== e.w; });
+            t.riddles = t.riddles.filter(function (r) { return r[0] !== e.w; });
+            t.routes = t.routes.filter(function (r) { return r[0] !== e.w && r[1] !== e.w; });
+            if (t.pairs.baby) t.pairs.baby.items = t.pairs.baby.items.filter(function (p) { return p[0] !== e.w; });
+            DB.addTheme(t); draw();
+          } })
+        ]);
+      })));
+      if (t.riddles.length) {
+        body.appendChild(h('div', { class: 'label', text: 'Загадки' }));
+        t.riddles.slice(0, 3).forEach(function (r) { body.appendChild(h('p', { class: 'small', text: '«' + r[1] + '» — ' + r[0] })); });
+      }
+      if (t.story) {
+        body.appendChild(h('div', { class: 'label', text: 'Рассказ-образец' }));
+        body.appendChild(h('p', { class: 'small', text: t.story.text }));
+      }
+      if (notes && notes.length) body.appendChild(h('div', { class: 'small muted', text: notes.join('; ') }));
+      body.appendChild(h('div', { class: 'small muted', style: 'margin-top:8px', text: 'Материал составлен ИИ (' + AI.label() + ') и проверен программой: формы слов, ссылки загадок и маршрутов на слова темы. Прочитайте его перед занятием.' }));
+    }
+    draw();
+    openSheet('Новая тема «' + t.title + '»', body, [
+      h('button', { class: 'btn ghost', text: 'Отмена', onclick: function () { closeSheet(); } }),
+      h('button', { class: 'btn primary', html: ICON.wand + 'Сохранить и выбрать', onclick: function () {
+        var ok = t.words.map(DB.word).filter(function (e) { return e && IMG.hasPicture(e); }).length;
+        if (ok < 4) { snack('Нужно хотя бы 4 слова с картинками. Подберите картинки для слов.'); return; }
+        saved = true; saveAiTheme(t); pickTheme(t.id);
+        snack('Тема «' + t.title + '» сохранена. Она есть в списке тем в разделе «Мои темы».');
+      } })
+    ], function () { if (!saved) DB.removeTheme(t.id); });
+  }
+
+  /* ---------- ИИ: дополнительный материал к занятию ---------- */
+  function aiExtrasCard() {
+    var X = R.L.extra;
+    var parts = [];
+    if (X) {
+      if ((X.chist || []).length) parts.push('чистоговорки (' + X.chist.length + ')');
+      if ((X.skor || []).length) parts.push('скороговорки');
+      if ((X.riddles || []).length) parts.push('загадки (' + X.riddles.length + ')');
+      if (X.poem) parts.push('стихотворение');
+      if (X.retell) parts.push('рассказ для пересказа');
+    }
+    return h('div', { class: 'card aibox' }, [
+      h('b', { text: '✨ ИИ-помощник' }),
+      h('div', { class: 'small muted', text: X ? 'В занятие добавлено: ' + parts.join(', ') + '. Материал есть в конспекте, техкарте и документе Word.'
+        : 'Составит ' + (R.L.sound ? 'чистоговорки на звук ' + PH.BY_ID[R.L.sound].name + ', ' : '') + 'новые загадки, стихотворение и рассказ для пересказа по теме «' + R.L.theme.title + '». Программа проверит материал, вы выберете нужное.' }),
+      h('div', { class: 'row-gap', style: 'margin-top:8px' }, X ? [
+        h('button', { class: 'btn sm soft', html: ICON.refresh + 'Составить заново', onclick: runExtras }),
+        h('button', { class: 'btn sm ghost', text: 'Убрать', onclick: function () { applyExtras(null); } })
+      ] : [
+        h('button', { class: 'btn sm primary', html: ICON.wand + (AI.ready() ? 'Составить материал' : 'Подключить ИИ'), onclick: runExtras })
+      ])
+    ]);
+  }
+  function runExtras() {
+    if (!AI.ready()) { openAiSettings(); return; }
+    busy('ИИ составляет материал по теме «' + R.L.theme.title + '»…');
+    AI.makeExtras(R.L).then(function (x) { busy(false); openExtrasReview(x); })
+      .catch(function (err) { busy(false); snack(err.message, [['Настройки ИИ', function () { openAiSettings(); }]], 12000); });
+  }
+  function openExtrasReview(x) {
+    var pick = { chist: x.chist.map(function () { return true; }), skor: x.skor.map(function () { return true; }), riddles: x.riddles.map(function () { return true; }), poem: !!x.poem, retell: !!x.retell };
+    var body = h('div');
+    function item(on, text, toggle) {
+      return h('div', { class: 'opt' + (on ? ' on' : ''), onclick: function (ev) { toggle(); ev.currentTarget.classList.toggle('on'); ev.currentTarget.querySelector('.box').textContent = ev.currentTarget.classList.contains('on') ? '✓' : ''; } },
+        [h('span', { class: 'box', text: on ? '✓' : '' }), h('div', { class: 'txt' }, [h('span', { text: text })])]);
+    }
+    function group(title, list, key, fmt) {
+      if (!list.length) return;
+      body.appendChild(h('div', { class: 'label', text: title }));
+      body.appendChild(h('div', { class: 'list' }, list.map(function (it, i) { return item(true, fmt(it), function () { pick[key][i] = !pick[key][i]; }); })));
+    }
+    group('Чистоговорки' + (R.L.sound ? ' на звук ' + PH.BY_ID[R.L.sound].name : ''), x.chist, 'chist', function (c) { return c; });
+    group('Скороговорки', x.skor, 'skor', function (c) { return c; });
+    group('Загадки (отгадки — слова темы)', x.riddles, 'riddles', function (r) { return '«' + r[1] + '» — ' + r[0]; });
+    if (x.poem) {
+      body.appendChild(h('div', { class: 'label', text: 'Стихотворение для заучивания' }));
+      body.appendChild(item(true, '«' + x.poem.name + '»: ' + x.poem.lines.join(' / '), function () { pick.poem = !pick.poem; }));
+    }
+    if (x.retell) {
+      body.appendChild(h('div', { class: 'label', text: 'Рассказ для пересказа' }));
+      body.appendChild(item(true, '«' + x.retell.title + '». ' + x.retell.text + (x.questions.length ? ' Вопросы: ' + x.questions.join(' ') : ''), function () { pick.retell = !pick.retell; }));
+    }
+    body.appendChild(h('div', { class: 'small muted', style: 'margin-top:10px', text: 'Составлено: ' + x.by + '. Чистоговорки проверены на наличие звука, отгадки загадок — на соответствие словам темы.' }));
+    openSheet('Материал ИИ', body, [
+      h('button', { class: 'btn ghost', text: 'Отмена', onclick: function () { closeSheet(); } }),
+      h('button', { class: 'btn primary', text: 'Добавить в занятие', onclick: function () {
+        var sel = {
+          chist: x.chist.filter(function (c, i) { return pick.chist[i]; }), skor: x.skor.filter(function (c, i) { return pick.skor[i]; }),
+          riddles: x.riddles.filter(function (c, i) { return pick.riddles[i]; }), poem: pick.poem ? x.poem : null,
+          retell: pick.retell ? x.retell : null, questions: pick.retell ? x.questions : [], by: x.by, date: x.date
+        };
+        closeSheet();
+        applyExtras(sel.chist.length || sel.skor.length || sel.riddles.length || sel.poem || sel.retell ? sel : null);
+      } })
+    ]);
+  }
+  function applyExtras(x) {
+    ST.extra = x ? Object.assign({ key: extraKey() }, x) : null;
+    saveAll();
+    R.L.extra = ST.extra;
+    R.plan = LESSON.build(R.L);
+    showResult('plan');
+    snack(x ? 'Материал ИИ добавлен в конспект, техкарту и документ.' : 'Материал ИИ убран.');
+  }
+
+  /* ---------- настройки ИИ ---------- */
+  function openAiSettings() {
+    var cfg = AI.settings();
+    var body = h('div');
+    var showKey = false;
+    function draw() {
+      body.innerHTML = '';
+      body.appendChild(h('div', { class: 'small muted', text: 'ИИ помогает создать новую тему, составить чистоговорки, загадки, стихи и нарисовать картинку. Программа проверяет ответы ИИ по словарю темы, а вы просматриваете их перед добавлением. Ключ хранится только на этом телефоне.' }));
+      body.appendChild(h('div', { class: 'label', text: 'Сервис (все с бесплатным доступом)' }));
+      body.appendChild(h('div', { class: 'list' }, AI.PROVIDERS.map(function (p) {
+        return h('div', { class: 'opt' + (cfg.provider === p.id ? ' on' : ''), onclick: function () { cfg.provider = p.id; AI.save(); draw(); } }, [
+          h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: p.name + (p.images ? ' — текст и картинки' : '') }), h('span', { text: p.about })])
+        ]);
+      })));
+      var p = AI.provider();
+      if (!p) return;
+      if (p.keyUrl) body.appendChild(h('button', { class: 'btn soft block', style: 'margin-top:10px', text: 'Получить бесплатный ключ: ' + p.keyUrl.replace('https://', ''), onclick: function () { NET.openUrl(p.keyUrl); } }));
+      if (p.id === 'custom') {
+        var bi = h('input', { type: 'url', value: cfg.base || '', placeholder: 'https://адрес-сервера/v1' });
+        bi.addEventListener('input', function () { cfg.base = bi.value.trim(); AI.save(); });
+        body.appendChild(h('div', { class: 'field' }, [h('label', { text: 'Адрес OpenAI-совместимого API' }), bi]));
+        body.appendChild(h('div', { class: 'switch' + (cfg.customImages ? ' on' : ''), onclick: function (ev) { cfg.customImages = !cfg.customImages; AI.save(); ev.currentTarget.classList.toggle('on'); } },
+          [h('div', { class: 'txt' }, ['Сервер умеет рисовать', h('span', { text: 'поддерживает /images/generations' })]), h('span', { class: 'tg' })]));
+      }
+      var ki = h('input', { type: showKey ? 'text' : 'password', value: (cfg.keys || {})[p.id] || '', placeholder: p.keyHint || 'ключ', autocomplete: 'off', spellcheck: 'false' });
+      ki.addEventListener('input', function () { cfg.keys[p.id] = ki.value.trim(); AI.save(); });
+      body.appendChild(h('div', { class: 'field' }, [h('label', { text: 'Ключ ' + p.name }), h('div', { class: 'row-gap' }, [h('div', { style: 'flex:1' }, [ki]),
+        h('button', { class: 'btn sm ghost', text: showKey ? 'Скрыть' : 'Показать', onclick: function () { showKey = !showKey; draw(); } })])]));
+      var mi = h('input', { type: 'text', value: (cfg.models || {})[p.id] || '', placeholder: p.model || 'подберётся автоматически', spellcheck: 'false' });
+      mi.addEventListener('input', function () { cfg.models[p.id] = mi.value.trim(); AI.save(); });
+      body.appendChild(h('div', { class: 'field' }, [h('label', { text: 'Модель (можно не указывать)' }), h('div', { class: 'row-gap' }, [h('div', { style: 'flex:1' }, [mi]),
+        h('button', { class: 'btn sm soft', text: 'Список', onclick: function () { pickModel(p, function (id) { cfg.models[p.id] = id; AI.save(); draw(); }); } })])]));
+      if (p.images || (p.id === 'custom' && cfg.customImages)) {
+        var im = h('input', { type: 'text', value: cfg.imageModel || '', placeholder: 'модель картинок — по умолчанию', spellcheck: 'false' });
+        im.addEventListener('input', function () { cfg.imageModel = im.value.trim(); AI.save(); });
+        body.appendChild(h('div', { class: 'field' }, [h('label', { text: 'Модель для картинок (необязательно)' }), im]));
+      }
+      var res = h('div', { style: 'margin-top:8px' });
+      body.appendChild(h('button', { class: 'btn primary block', html: ICON.wand + 'Проверить подключение', onclick: function () {
+        res.innerHTML = '<div class="muted small">Спрашиваю ИИ…</div>';
+        AI.chat([{ role: 'user', content: 'Ответь одним словом по-русски: как называется детёныш кошки?' }], { timeout: 90000, temperature: 0 }).then(function (a) {
+          res.innerHTML = '';
+          res.appendChild(h('div', { class: 'okbox', text: 'Работает! ' + AI.label() + ' отвечает: «' + String(a).slice(0, 80) + '».' }));
+        }).catch(function (err) { res.innerHTML = ''; res.appendChild(h('div', { class: 'warnbox', text: err.message })); });
+      } }));
+      body.appendChild(res);
+    }
+    draw();
+    openSheet('Бесплатный ИИ', body, null, function () { if (screen === 'form') renderForm(); });
+  }
+  function pickModel(p, done) {
+    busy('Загружаю список моделей…');
+    AI.listModels(p.id).then(function (ids) {
+      busy(false);
+      if (!ids.length) { snack('Сервис не вернул список моделей. Укажите модель вручную.'); return; }
+      var body = h('div', { class: 'list' }, ids.slice(0, 150).map(function (id) {
+        return h('div', { class: 'opt', onclick: function () { closeSheet(); done(id); } }, [h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: id })])]);
+      }));
+      openSheet('Модели ' + p.name + (p.free ? ' (бесплатные)' : ''), body);
+    }).catch(function (err) { busy(false); snack(err.message); });
+  }
+
   /* ---------- настройки ---------- */
   function openSettings() {
     var body = h('div');
@@ -771,6 +1147,8 @@
       inp.addEventListener('input', function () { S[key] = inp.value; saveAll(); });
       body.appendChild(h('div', { class: 'field' }, [h('label', { text: label }), inp]));
     }
+    body.appendChild(h('div', { class: 'opt aiopt', onclick: function () { openAiSettings(); } }, [h('span', { class: 'ai-ic', text: '✨' }),
+      h('div', { class: 'txt' }, [h('b', { text: 'Бесплатный ИИ' }), h('span', { text: AI.ready() ? 'Подключён: ' + AI.label() : 'Не подключён — нажмите, чтобы выбрать сервис и вставить ключ' })])]));
     field('Полное название учреждения (титульный лист)', 'orgFull', true);
     field('Краткое название (шапка приложения)', 'orgShort');
     field('Город', 'city');
@@ -779,8 +1157,8 @@
     field('Название группы', 'group');
     body.appendChild(h('div', { class: 'label', text: 'Документ Word' }));
     body.appendChild(seg([[14, 'Шрифт 14 пт'], [12, 'Шрифт 12 пт']], S.fontSize, function (v) { S.fontSize = v; saveAll(); closeSheet(); openSettings(); }));
-    var incNames = [['title', 'Титульный лист'], ['info', 'Информационная карта (цели, задачи)'], ['techcard', 'Технологическая карта'], ['conspect', 'Ход занятия (конспект)'],
-      ['home', 'Задание родителям'], ['keys', 'Ключи к заданиям'], ['sources', 'Нормативная база и литература'], ['worksheet', 'Рабочий лист']];
+    var incNames = [['title', 'Титульный лист'], ['info', 'Цели и задачи отдельной таблицей (в техкарте они уже есть)'], ['techcard', 'Технологическая карта'], ['conspect', 'Ход занятия (конспект)'],
+      ['home', 'Задание родителям'], ['extra', 'Материал ИИ (чистоговорки, загадки, стихи)'], ['keys', 'Ключи к заданиям'], ['sources', 'Нормативная база и литература'], ['worksheet', 'Рабочий лист']];
     incNames.forEach(function (x) {
       var on = S.include[x[0]] !== false;
       body.appendChild(h('div', { class: 'switch' + (on ? ' on' : ''), onclick: function (ev) {

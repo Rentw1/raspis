@@ -468,18 +468,51 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void httpGet(final String url, final boolean binary, final String cb) {
+            httpRequest("GET", url, null, null, binary, 25000, cb);
+        }
+
+        /**
+         * HTTPS-запрос для интернет-картинок и бесплатных ИИ-сервисов.
+         * headersJson — объект {"Имя": "значение"}; body — текст (JSON или form-urlencoded) либо null.
+         * Ответ в JS: {ok, status, type, data} (data — текст или base64 при binary) или {ok:false, error}.
+         */
+        @JavascriptInterface
+        public void httpRequest(final String method, final String url, final String headersJson, final String body,
+                                final boolean binary, final int timeoutMs, final String cb) {
             pool.execute(new Runnable() {
                 @Override
                 public void run() {
                     HttpURLConnection c = null;
                     try {
                         if (url == null || !url.startsWith("https://")) throw new IOException("Разрешены только https-адреса");
+                        String m = method == null ? "GET" : method.toUpperCase(Locale.ROOT);
+                        if (!m.equals("GET") && !m.equals("POST")) throw new IOException("Метод не поддерживается: " + m);
                         c = (HttpURLConnection) new URL(url).openConnection();
                         c.setConnectTimeout(15000);
-                        c.setReadTimeout(25000);
+                        c.setReadTimeout(Math.max(10000, Math.min(timeoutMs <= 0 ? 25000 : timeoutMs, 300000)));
                         c.setInstanceFollowRedirects(true);
-                        c.setRequestProperty("User-Agent", "LogopedKonstruktor/1.0 (Android; educational, non-commercial)");
+                        c.setRequestMethod(m);
+                        c.setRequestProperty("User-Agent", "LogopedKonstruktor (Android; educational, non-commercial)");
                         c.setRequestProperty("Accept", binary ? "image/*,*/*;q=0.8" : "application/json,*/*;q=0.8");
+                        if (headersJson != null && headersJson.length() > 0) {
+                            JSONObject h = new JSONObject(headersJson);
+                            java.util.Iterator<String> it = h.keys();
+                            while (it.hasNext()) {
+                                String k = it.next();
+                                c.setRequestProperty(k, h.optString(k, ""));
+                            }
+                        }
+                        if (m.equals("POST")) {
+                            byte[] out = (body == null ? "" : body).getBytes("UTF-8");
+                            c.setDoOutput(true);
+                            c.setFixedLengthStreamingMode(out.length);
+                            OutputStream os = c.getOutputStream();
+                            try {
+                                os.write(out);
+                            } finally {
+                                os.close();
+                            }
+                        }
                         int code = c.getResponseCode();
                         InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
                         ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -489,24 +522,43 @@ public class MainActivity extends Activity {
                                 int n;
                                 while ((n = in.read(buf)) > 0) {
                                     bos.write(buf, 0, n);
-                                    if (bos.size() > MAX_DOWNLOAD) throw new IOException("Файл слишком большой");
+                                    if (bos.size() > MAX_DOWNLOAD) throw new IOException("Ответ слишком большой");
                                 }
                             } finally {
                                 in.close();
                             }
                         }
-                        byte[] body = bos.toByteArray();
-                        JSONObject r = new JSONObject();
-                        r.put("ok", code >= 200 && code < 300);
-                        r.put("status", code);
+                        byte[] data = bos.toByteArray();
                         String type = c.getContentType();
+                        boolean ok = code >= 200 && code < 300;
+                        JSONObject r = new JSONObject();
+                        r.put("ok", ok);
+                        r.put("status", code);
                         r.put("type", type == null ? "" : type);
-                        r.put("data", binary ? Base64.encodeToString(body, Base64.NO_WRAP) : new String(body, "UTF-8"));
+                        boolean asBinary = binary && ok && (type == null || !type.startsWith("application/json"));
+                        r.put("data", asBinary ? Base64.encodeToString(data, Base64.NO_WRAP) : new String(data, "UTF-8"));
+                        r.put("binary", asBinary);
                         callJs(cb, r);
                     } catch (Throwable t) {
                         callJs(cb, err(t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
                     } finally {
                         if (c != null) c.disconnect();
+                    }
+                }
+            });
+        }
+
+        /** Открыть ссылку (страница получения ключа ИИ и т. п.) во внешнем браузере */
+        @JavascriptInterface
+        public void openUrl(final String url) {
+            if (url == null || !url.startsWith("https://")) return;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                    } catch (ActivityNotFoundException e) {
+                        Toast.makeText(MainActivity.this, "Нет браузера для открытия ссылки", Toast.LENGTH_SHORT).show();
                     }
                 }
             });

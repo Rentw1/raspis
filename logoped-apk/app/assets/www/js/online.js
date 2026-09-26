@@ -14,13 +14,44 @@ var NET = (function () {
     delete pending[id];
     p(res);
   };
-  function call(fn) {
+  function call(fn, ms) {
     return new Promise(function (resolve) {
       var id = 'cb' + (++seq) + '_' + Date.now();
       pending[id] = resolve;
       fn(id);
-      setTimeout(function () { if (pending[id]) { delete pending[id]; resolve({ ok: false, error: 'Нет ответа (время ожидания истекло)' }); } }, 45000);
+      setTimeout(function () { if (pending[id]) { delete pending[id]; resolve({ ok: false, error: 'Нет ответа (время ожидания истекло)' }); } }, ms || 45000);
     });
+  }
+
+  /**
+   * HTTPS-запрос: o = {method, headers, body, binary, timeout (мс)}.
+   * Ответ: {ok, status, type, data, binary} (data — текст или base64) либо {ok:false, error}.
+   */
+  function request(url, o) {
+    o = o || {};
+    var method = (o.method || 'GET').toUpperCase();
+    var timeout = Math.max(5000, o.timeout || 25000);
+    if (B && B.httpRequest) {
+      return call(function (id) {
+        B.httpRequest(method, url, JSON.stringify(o.headers || {}), o.body == null ? null : String(o.body), !!o.binary, timeout, id);
+      }, timeout + 15000);
+    }
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeout) : null;
+    return fetch(url, { method: method, headers: o.headers || {}, body: method === 'GET' ? undefined : o.body, signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) {
+        var type = r.headers.get('content-type') || '';
+        if (o.binary && r.ok && type.indexOf('application/json') < 0) {
+          return r.arrayBuffer().then(function (buf) { return { ok: true, status: r.status, type: type, data: U.b64FromBytes(new Uint8Array(buf)), binary: true }; });
+        }
+        return r.text().then(function (t) { return { ok: r.ok, status: r.status, type: type, data: t, binary: false }; });
+      })
+      .catch(function (e) { return { ok: false, error: e && e.name === 'AbortError' ? 'Время ожидания истекло' : (e && e.message) || 'Сеть недоступна' }; })
+      .then(function (res) { if (timer) clearTimeout(timer); return res; });
+  }
+  function openUrl(url) {
+    if (!/^https:\/\//.test(url || '')) return;
+    if (B && B.openUrl) B.openUrl(url); else window.open(url, '_blank', 'noopener');
   }
 
   function isAndroid() { return !!B; }
@@ -28,14 +59,7 @@ var NET = (function () {
   function toast(msg) { if (B) B.toast(msg); }
 
   /** GET-запрос: {ok, status, type, data} (data — текст или base64 при binary) */
-  function get(url, binary) {
-    if (B) return call(function (id) { B.httpGet(url, !!binary, id); });
-    return fetch(url).then(function (r) {
-      var type = r.headers.get('content-type') || '';
-      if (!binary) return r.text().then(function (t) { return { ok: r.ok, status: r.status, type: type, data: t }; });
-      return r.arrayBuffer().then(function (buf) { return { ok: r.ok, status: r.status, type: type, data: U.b64FromBytes(new Uint8Array(buf)) }; });
-    }).catch(function (e) { return { ok: false, error: e.message }; });
-  }
+  function get(url, binary) { return request(url, { binary: !!binary }); }
   function getJson(url) {
     return get(url, false).then(function (r) {
       if (!r.ok) throw new Error(r.error || ('Ошибка сервера ' + (r.status || '')));
@@ -44,7 +68,7 @@ var NET = (function () {
   }
   function getDataUrl(url) {
     return get(url, true).then(function (r) {
-      if (!r.ok || !r.data) throw new Error(r.error || ('Не удалось скачать картинку (' + (r.status || '') + ')'));
+      if (!r.ok || !r.data || r.binary === false) throw new Error(r.error || ('Не удалось скачать картинку (' + (r.status || '') + ')'));
       var type = (r.type || 'image/png').split(';')[0];
       if (type.indexOf('image/') !== 0) type = 'image/png';
       return 'data:' + type + ';base64,' + r.data;
@@ -80,6 +104,70 @@ var NET = (function () {
       return Promise.all([arasaacImage(id, true), arasaacImage(id, false).catch(function () { return null; })]).then(function (res) {
         return { c: res[0], b: res[1], src: 'arasaac', id: id, credit: 'ARASAAC (arasaac.org), Sergio Palao, CC BY-NC-SA 4.0' };
       });
+    });
+  }
+
+  /* ---------- OpenMoji: подбор по английскому названию, недостающие — из интернета ---------- */
+  var omList = null;
+  function omEntries() {
+    if (omList) return omList;
+    omList = String(window.OM_INDEX || '').split('\n').filter(Boolean).map(function (line) {
+      var p = line.split('|');
+      return { hex: p[0], ann: p[1] || '', tags: (p[2] || '').split(',').filter(Boolean) };
+    });
+    return omList;
+  }
+  function normEn(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function variants(w) {
+    var out = [w];
+    if (/ies$/.test(w)) out.push(w.slice(0, -3) + 'y');
+    if (/es$/.test(w)) out.push(w.slice(0, -2));
+    if (/s$/.test(w)) out.push(w.slice(0, -1));
+    else out.push(w + 's');
+    return out;
+  }
+  /** Лучшие коды OpenMoji для английского названия: [{hex, ann, score, offline}] */
+  function openmojiSearch(en, limit) {
+    var q = normEn(en).replace(/^(a|an|the) /, '');
+    if (!q) return [];
+    var qv = variants(q), words = q.split(' ');
+    var res = [];
+    omEntries().forEach(function (it) {
+      var sc = 0;
+      if (qv.indexOf(it.ann) >= 0) sc = 100;
+      else if (it.tags.some(function (t) { return qv.indexOf(t) >= 0; })) sc = 70;
+      else if (words.length === 1 && (' ' + it.ann + ' ').indexOf(' ' + q + ' ') >= 0) sc = 55 - Math.min(20, it.ann.split(' ').length * 4);
+      else if (words.length > 1 && words.every(function (w) { return (' ' + it.ann + ' ').indexOf(' ' + w + ' ') >= 0; })) sc = 60;
+      else if (words.length > 1 && words.every(function (w) { return (' ' + it.ann + ' ').indexOf(' ' + w + ' ') >= 0 || variants(w).some(function (v) { return it.tags.indexOf(v) >= 0; }); })) sc = 50;
+      if (!sc) return;
+      var offline = !!(window.OM_CODES && OM_CODES[it.hex]);
+      res.push({ hex: it.hex, ann: it.ann, score: sc + (offline ? 3 : 0), offline: offline });
+    });
+    res.sort(function (a, b) { return b.score - a.score; });
+    return res.slice(0, limit || 24);
+  }
+  var OM_CDN = ['https://cdn.jsdelivr.net/npm/openmoji@17.0.0/', 'https://unpkg.com/openmoji@17.0.0/'];
+  function openmojiUrl(hex, black) { return OM_CDN[0] + (black ? 'black' : 'color') + '/svg/' + hex + '.svg'; }
+  function openmojiSvg(hex, black) {
+    var i = 0;
+    function next() {
+      if (i >= OM_CDN.length) return Promise.reject(new Error('OpenMoji недоступен'));
+      var url = OM_CDN[i++] + (black ? 'black' : 'color') + '/svg/' + hex + '.svg';
+      return get(url, false).then(function (r) {
+        if (!r.ok || String(r.data).indexOf('<svg') < 0) throw new Error('Нет картинки ' + hex);
+        return r.data;
+      }).catch(next);
+    }
+    return next();
+  }
+  function svgDataUrl(text) {
+    var t = String(text).replace(/<\?xml[^>]*>/, '').replace('<svg ', '<svg width="512" height="512" ');
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t);
+  }
+  /** Картинка OpenMoji из интернета в формате замены: {c, b, src, credit} */
+  function openmojiFor(hex) {
+    return Promise.all([openmojiSvg(hex, false), openmojiSvg(hex, true).catch(function () { return null; })]).then(function (r) {
+      return { c: svgDataUrl(r[0]), b: r[1] ? svgDataUrl(r[1]) : null, src: 'openmoji', id: hex, credit: 'OpenMoji (openmoji.org), CC BY-SA 4.0' };
     });
   }
 
@@ -135,7 +223,8 @@ var NET = (function () {
   function version() { try { return B ? B.version() : 'web'; } catch (e) { return ''; } }
 
   return {
-    isAndroid: isAndroid, online: online, toast: toast, get: get, getJson: getJson, getDataUrl: getDataUrl,
+    isAndroid: isAndroid, online: online, toast: toast, get: get, getJson: getJson, getDataUrl: getDataUrl, request: request, openUrl: openUrl,
+    openmojiSearch: openmojiSearch, openmojiFor: openmojiFor, openmojiUrl: openmojiUrl,
     arasaacSearch: arasaacSearch, arasaacImage: arasaacImage, arasaacFor: arasaacFor,
     openverseSearch: openverseSearch, commonsSearch: commonsSearch,
     saveFile: saveFile, openFile: openFile, shareFile: shareFile, printHtml: printHtml, version: version

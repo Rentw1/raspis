@@ -126,13 +126,13 @@ var IMG = (function () {
     var v = variant === 'b' ? 'b' : 'c';
     var key = 'w|' + e.w + '|' + v;
     if (imgCache[key]) return imgCache[key];
-    var ov = overrides[e.w];
+    var ov = overrides[e.w] || (e.of ? overrides[e.of] : null);
     var p;
     if (ov && (ov[v] || ov.c)) {
       p = loadImage(ov[v] || ov.c);
     } else {
       var io = DB.imageOf(e);
-      p = io ? code(io.img, v) : Promise.resolve(null);
+      p = io && io.img ? code(io.img, v) : Promise.resolve(null);
     }
     p = p.catch(function () { return null; });
     imgCache[key] = p;
@@ -143,9 +143,9 @@ var IMG = (function () {
   function hasPicture(e) {
     if (typeof e === 'string') e = DB.word(e);
     if (!e) return false;
-    if (overrides[e.w]) return true;
+    if (overrides[e.w] || (e.of && overrides[e.of])) return true;
     var io = DB.imageOf(e);
-    if (!io) return false;
+    if (!io || !io.img) return false;
     if (io.img.indexOf('x:') === 0) return ART.has(io.img.slice(2));
     return !!(window.OM_CODES ? OM_CODES[io.img] : true);
   }

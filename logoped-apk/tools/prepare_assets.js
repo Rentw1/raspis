@@ -82,6 +82,7 @@ if (CHECK) {
     else if (!OM_CODES[c]) problems.push('Код ' + c + ' не записан в data/omcodes.js');
     else ok[c] = 1;
   });
+  if (!fs.existsSync(path.join(WWW, 'data', 'omindex.js'))) problems.push('Нет data/omindex.js (запустите tools/prepare_assets.js)');
   console.log(`Проверка: тем ${DB.themes.length}, слов ${Object.keys(DB.words).length}, картинок OpenMoji ${Object.keys(ok).length}, своих рисунков ${ART.ids().length}`);
   if (problems.length) { console.log('Проблемы (' + problems.length + '):\n  ' + problems.join('\n  ')); process.exitCode = 1; }
   return;
@@ -97,6 +98,23 @@ const min = s => s.replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ').replace(/\n/g
 });
 fs.writeFileSync(path.join(WWW, 'data', 'omcodes.js'), "'use strict';\n/* Сгенерировано tools/prepare_assets.js — коды OpenMoji в img/c и img/b */\nvar OM_CODES = " + JSON.stringify(ok) + ';\n');
 fs.copyFileSync(path.join(OM, 'LICENSE.txt'), path.join(WWW, 'img', 'OPENMOJI_LICENSE.txt'));
+
+// Указатель всех OpenMoji (английские названия и теги) — для подбора картинок к новым словам:
+// встроенные коды берутся из img/, остальные скачиваются из интернета (CDN пакета openmoji).
+const GROUPS = ['animals-nature', 'food-drink', 'travel-places', 'activities', 'objects', 'extras-openmoji', 'extras-unicode', 'people-body'];
+const PEOPLE = /person-role|family|person-activity|body-parts|person-fantasy|person-resting|person-sport/;
+const meta = JSON.parse(fs.readFileSync(path.join(OM, 'data', 'openmoji.json'), 'utf8'));
+const idx = [];
+meta.forEach(m => {
+  if (GROUPS.indexOf(m.group) < 0 || m.skintone) return;
+  if (m.group === 'people-body' && !PEOPLE.test(m.subgroups || '')) return;
+  if (!fs.existsSync(path.join(OM, 'color', 'svg', m.hexcode + '.svg'))) return;
+  const tags = [];
+  String((m.openmoji_tags || '') + ',' + (m.tags || '')).split(',').map(t => t.trim().toLowerCase()).forEach(t => { if (t && tags.indexOf(t) < 0 && tags.length < 8) tags.push(t); });
+  idx.push([m.hexcode, String(m.annotation || '').toLowerCase().replace(/[|\n]/g, ' '), tags.join(',').replace(/[|\n]/g, ' ')].join('|'));
+});
+fs.writeFileSync(path.join(WWW, 'data', 'omindex.js'), "'use strict';\n/* Сгенерировано tools/prepare_assets.js — указатель OpenMoji: код|название|теги */\nvar OM_INDEX = " + JSON.stringify(idx.join('\n')) + ';\n');
+console.log('Указатель OpenMoji: ' + idx.length + ' записей');
 
 console.log(`Тем: ${DB.themes.length}, слов: ${Object.keys(DB.words).length}, картинок OpenMoji: ${Object.keys(ok).length}, своих рисунков: ${ART.ids().length}`);
 if (problems.length) {

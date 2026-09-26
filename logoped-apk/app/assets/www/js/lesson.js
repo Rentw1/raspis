@@ -114,6 +114,13 @@ var LESSON = (function () {
     var kids = ind ? 'Ребёнок' : 'Дети';
     var S = [];
     var nm = sn(L.sound);
+    var X = L.extra || {};
+    // ссылки на задания рабочего листа: в конспекте и техкарте те же задания, что на листе
+    function ws(t) { var i = T.indexOf(t); return i >= 0 ? ' (рабочий лист, задание ' + (i + 1) + ')' : ''; }
+    function wsList(list) {
+      var n = list.map(function (t) { return T.indexOf(t) + 1; }).filter(function (x) { return x > 0; });
+      return n.length ? ' Рабочий лист: ' + (n.length > 1 ? 'задания ' : 'задание ') + n.join(', ') + '.' : '';
+    }
 
     // 1. Организационный момент
     S.push({
@@ -220,12 +227,12 @@ var LESSON = (function () {
     } else {
       var practice = T.filter(function (t) { return ['name', 'odd', 'many', 'count', 'dim', 'baby', 'food', 'home', 'tool', 'forms', 'poss', 'groups', 'find'].indexOf(t.id) >= 0; }).slice(0, 2);
       var pSpeech = [['Логопед', 'Сегодня вы будете выполнять задания самостоятельно. Возьмите рабочие листы. Внимательно слушайте задание.']];
-      practice.forEach(function (t) { pSpeech.push(['Логопед', 'Задание «' + t.title + '». ' + t.instr]); pSpeech.push([kids, 'Выполняют задание и объясняют: ' + U.lower(t.note)]); });
+      practice.forEach(function (t) { pSpeech.push(['Логопед', 'Задание «' + t.title + '»' + ws(t) + '. ' + t.instr]); pSpeech.push([kids, 'Выполняют задание и объясняют: ' + U.lower(t.note)]); });
       S.push({
         key: 'practice', w: 3.2, name: 'Закрепление: самостоятельная практическая деятельность', used: practice.map(function (t) { return t.id; }),
         aim: 'Закрепить знания по теме в самостоятельной практической деятельности.',
         speech: pSpeech,
-        teacher: 'Даёт инструкции, организует самостоятельную работу детей с рабочим листом, оказывает индивидуальную помощь, проверяет.',
+        teacher: 'Даёт инструкции, организует самостоятельную работу детей с рабочим листом, оказывает индивидуальную помощь, проверяет.' + wsList(practice),
         children: 'Самостоятельно выполняют задания (' + practice.map(function (t) { return '«' + t.title + '»'; }).join(', ') + '), объясняют свои действия.',
         methods: 'Практический метод, самостоятельная работа, самопроверка, взаимопроверка',
         result: 'Дети самостоятельно применяют знания по теме, объясняют свой выбор.'
@@ -238,9 +245,19 @@ var LESSON = (function () {
       var ss = soundSents(L, L.sound).slice(0, 3);
       var sSpeech = [['Логопед', 'Повторите за мной слоги: ' + PH.syllablePaths(L.sound).join('; ') + '.']];
       var hearT = task(T, 'sound') || task(T, 'hear');
-      if (hearT && hearT.play) sSpeech = sSpeech.concat(hearT.play.lines);
+      if (hearT && hearT.play) { sSpeech.push(['Игра', '«' + hearT.play.name + '»' + ws(hearT)]); sSpeech = sSpeech.concat(hearT.play.lines); }
       if (sw.length) sSpeech.push(['Логопед', 'Повторите слова со звуком ' + nm + ': ' + sw.slice(0, 8).join(', ') + '.']);
       if (ss.length) sSpeech.push(['Логопед', 'Повторите предложения: ' + ss.map(function (x) { return '«' + x + '»'; }).join(' ')]);
+      if ((X.chist || []).length) {
+        sSpeech.push(['Игра', '«Чистоговорки»']);
+        sSpeech.push(['Логопед', 'Повторяйте за мной чистоговорки, чётко произносите звук ' + nm + ':']);
+        X.chist.forEach(function (c) { sSpeech.push(['Текст', c]); });
+      }
+      if ((X.skor || []).length) {
+        sSpeech.push(['Игра', '«Скороговорка»']);
+        sSpeech.push(['Логопед', 'Скажите скороговорку сначала медленно, потом быстрее:']);
+        X.skor.forEach(function (c) { sSpeech.push(['Текст', c]); });
+      }
       if (L.sound2) {
         var sw2 = soundWords(L, L.sound2).map(function (e) { return e.w; });
         sSpeech.push(['Логопед', 'Слушайте внимательно: со звуком ' + nm + ' — ' + (sw.slice(0, 4).join(', ') || '—') + '; со звуком ' + sn(L.sound2) + ' — ' + (sw2.slice(0, 4).join(', ') || '—') + '. Разложите картинки на две группы.']);
@@ -249,7 +266,7 @@ var LESSON = (function () {
         key: 'sound', w: 3, name: L.sound2 ? 'Дифференциация звуков ' + nm + ' – ' + sn(L.sound2) : 'Автоматизация звука ' + nm + ' на материале темы',
         aim: L.sound2 ? 'Учить различать звуки на слух и в произношении.' : 'Закреплять правильное произношение звука ' + nm + ' в слогах, словах и предложениях по теме; развивать фонематический слух.',
         speech: sSpeech,
-        teacher: 'Даёт речевой образец, организует игры на фонематический слух' + (hearT ? ' («' + hearT.title + '»)' : '') + ', контролирует произношение.',
+        teacher: 'Даёт речевой образец, организует игры на фонематический слух' + (hearT ? ' («' + hearT.title + '»)' : '') + ', контролирует произношение.' + (hearT ? wsList([hearT]) : ''),
         children: 'Повторяют слоги, слова и предложения со звуком ' + nm + ', определяют наличие и место звука.',
         methods: 'Образец речи, отражённое и самостоятельное проговаривание, игровые упражнения, звуковые схемы',
         result: 'Дети правильно произносят звук ' + nm + ' в словах и фразах по теме' + (hearT ? ', определяют место звука в слове' : '') + '.'
@@ -266,7 +283,7 @@ var LESSON = (function () {
     if (games.length || talk.length) {
       var gSpeech = [];
       games.forEach(function (t) {
-        gSpeech.push(['Игра', '«' + t.play.name + '»']);
+        gSpeech.push(['Игра', '«' + t.play.name + '»' + ws(t)]);
         gSpeech = gSpeech.concat(t.play.lines);
       });
       talk.forEach(function (tk) {
@@ -281,7 +298,7 @@ var LESSON = (function () {
         key: 'lex', w: 4.2, name: 'Лексико-грамматические игры',
         aim: 'Совершенствовать грамматический строй речи, активизировать словарь по теме.',
         speech: gSpeech,
-        teacher: 'Проводит игры: ' + games.map(function (t) { return '«' + t.play.name + '»'; }).concat(talk.map(function (tk) { return '«' + tk.name + '»'; })).join(', ') + '; даёт образец, исправляет ошибки.',
+        teacher: 'Проводит игры: ' + games.map(function (t) { return '«' + t.play.name + '»'; }).concat(talk.map(function (tk) { return '«' + tk.name + '»'; })).join(', ') + '; даёт образец, исправляет ошибки.' + wsList(games),
         children: 'Отвечают полными ответами, согласуют слова в роде, числе и падеже.',
         methods: 'Дидактические игры, образец ответа, вопросы, наглядность (предметные картинки)',
         result: 'Дети правильно употребляют грамматические формы слов по теме.'
@@ -317,9 +334,12 @@ var LESSON = (function () {
 
     // 11. Связная речь
     var coh = task(T, 'mnemo') || task(T, 'sinkvein') || task(T, 'riddle');
-    if (coh || L.direction === 'coherent') {
+    var xCoh = !!((X.riddles || []).length || X.retell || X.poem);
+    var cohStory = false;
+    if (coh || L.direction === 'coherent' || xCoh) {
       var cSpeech = [];
       if (task(T, 'mnemo') && th.story) {
+        cSpeech.push(['Игра', '«Расскажи по схеме»' + ws(task(T, 'mnemo'))]);
         cSpeech.push(['Логопед', 'Давайте составим рассказ по схеме (мнемотаблице). Каждая клеточка — это вопрос: ' + th.story.plan.map(function (p) { return p[1]; }).join(' ')]);
         cSpeech.push([ind ? 'Ребёнок' : 'Ребёнок (образец)', th.story.text]);
       }
@@ -328,18 +348,38 @@ var LESSON = (function () {
         cSpeech.push(['Логопед', 'Отгадайте загадку и объясните, как вы догадались.']);
         (task(T, 'riddle').riddles || []).forEach(function (r) { cSpeech.push(['Логопед', '«' + r + '»']); });
       }
-      if (!cSpeech.length && th.story) {
+      if (!cSpeech.length && th.story && !xCoh) {
         cSpeech.push(['Логопед', 'Расскажите про ' + (th.story.about || DB.acc(th.story.word)) + ' по плану: ' + th.story.plan.map(function (p) { return p[1]; }).join(' ')]);
         cSpeech.push(['Ребёнок (образец)', th.story.text]);
       }
+      cohStory = !!th.story && cSpeech.some(function (x) { return /по схеме|по плану/.test(x[1]); });
+      if ((X.riddles || []).length) {
+        cSpeech.push(['Игра', '«Отгадай загадку»']);
+        X.riddles.forEach(function (r) { cSpeech.push(['Логопед', '«' + r[1] + '»']); cSpeech.push([kids, cap(r[0]) + '!']); });
+      }
+      if (X.retell) {
+        cSpeech.push(['Игра', '«Послушай и перескажи»']);
+        cSpeech.push(['Логопед', 'Послушайте рассказ «' + X.retell.title + '». ' + X.retell.text]);
+        if ((X.questions || []).length) cSpeech.push(['Логопед', 'Ответьте на вопросы: ' + X.questions.join(' ')]);
+        cSpeech.push([kids, 'Отвечают на вопросы полными ответами, пересказывают рассказ близко к тексту.']);
+      }
+      if (X.poem) {
+        cSpeech.push(['Игра', '«Выучим стихотворение»']);
+        cSpeech.push(['Логопед', 'Послушайте стихотворение «' + X.poem.name + '» и повторяйте за мной по строчкам:']);
+        X.poem.lines.forEach(function (l) { cSpeech.push(['Текст', l]); });
+        cSpeech.push([kids, 'Повторяют стихотворение по строчкам, затем рассказывают целиком.']);
+      }
       S.push({
-        key: 'coh', w: 3, name: 'Развитие связной речи' + (task(T, 'mnemo') ? ': рассказ по мнемотаблице' : ''),
-        aim: 'Учить составлять связный описательный рассказ по плану (схеме).',
+        key: 'coh', w: 3 + (xCoh ? 1 : 0), name: 'Развитие связной речи' + (task(T, 'mnemo') ? ': рассказ по мнемотаблице' : ''),
+        aim: cohStory ? 'Учить составлять связный описательный рассказ по плану (схеме).' : 'Развивать связную речь: учить отвечать на вопросы полным ответом' + (X.retell ? ', пересказывать короткий текст' : '') + (X.poem ? ', выразительно читать стихотворение' : '') + '.',
         speech: cSpeech,
-        teacher: 'Объясняет план рассказа по схеме, даёт образец, помогает наводящими вопросами.',
-        children: 'Составляют рассказ-описание по схеме, дополняют ответы друг друга.',
-        methods: 'Мнемотехника, образец рассказа, наводящие вопросы',
-        result: 'Дети составляют описательный рассказ из 5–7 предложений с опорой на схему.'
+        teacher: [cohStory ? 'Объясняет план рассказа по схеме, даёт образец, помогает наводящими вопросами.' : 'Организует речевые упражнения, даёт образец, помогает наводящими вопросами.',
+          (X.riddles || []).length ? 'Загадывает загадки.' : '', X.retell ? 'Читает рассказ, задаёт вопросы, организует пересказ.' : '', X.poem ? 'Разучивает стихотворение по строчкам.' : ''].filter(Boolean).join(' ') +
+          wsList(['mnemo', 'sinkvein', 'riddle'].map(function (id) { return task(T, id); }).filter(Boolean)),
+        children: [cohStory ? 'Составляют рассказ-описание по схеме, дополняют ответы друг друга.' : 'Отвечают на вопросы полными ответами.',
+          (X.riddles || []).length ? 'Отгадывают загадки, объясняют отгадку.' : '', X.retell ? 'Пересказывают рассказ.' : '', X.poem ? 'Повторяют и рассказывают стихотворение.' : ''].filter(Boolean).join(' '),
+        methods: (cohStory ? 'Мнемотехника, образец рассказа, наводящие вопросы' : 'Образец речи, наводящие вопросы') + (X.retell ? ', чтение, беседа по вопросам, пересказ' : '') + (X.poem ? ', заучивание по строчкам' : ''),
+        result: cohStory ? 'Дети составляют описательный рассказ из 5–7 предложений с опорой на схему.' : 'Дети отвечают полным ответом' + (X.retell ? ', пересказывают текст' : '') + (X.poem ? ', рассказывают стихотворение' : '') + '.'
       });
     }
 
@@ -347,13 +387,13 @@ var LESSON = (function () {
     var motor = T.filter(function (t) { return ['maze', 'trace', 'color', 'shadow', 'overlap', 'puzzle'].indexOf(t.id) >= 0; });
     if (motor.length) {
       var mSpeech = [['Логопед', 'Возьмите карандаши. Выполним задания в рабочем листе.']];
-      motor.slice(0, 2).forEach(function (t) { mSpeech.push(['Логопед', '«' + t.title + '». ' + t.instr]); });
+      motor.slice(0, 2).forEach(function (t) { mSpeech.push(['Логопед', '«' + t.title + '»' + ws(t) + '. ' + t.instr]); });
       mSpeech.push([kids, 'Выполняют задания, называют, что получилось.']);
       S.push({
         key: 'sheet', w: 2.2, name: 'Работа в рабочем листе',
         aim: 'Развивать мелкую моторику, зрительно-моторную координацию, зрительное внимание.',
         speech: mSpeech,
-        teacher: 'Объясняет задания (' + motor.map(function (t) { return '«' + t.title + '»'; }).join(', ') + '), следит за посадкой и правильным захватом карандаша.',
+        teacher: 'Объясняет задания (' + motor.map(function (t) { return '«' + t.title + '»'; }).join(', ') + '), следит за посадкой и правильным захватом карандаша.' + wsList(motor),
         children: 'Выполняют графические задания, комментируют свои действия.',
         methods: 'Практический метод, инструкция, индивидуальная помощь',
         result: 'Дети выполняют графические задания аккуратно и последовательно.'
@@ -421,7 +461,7 @@ var LESSON = (function () {
       if (diff > 0) { st.min++; diff--; } else if (st.min > 1) { st.min--; diff++; }
       i++;
     }
-    S.forEach(function (s, k) { s.n = k + 1; });
+    S.forEach(function (s, k) { s.n = k + 1; s.phase = s.key === 'org' || s.key === 'mot' ? 1 : (s.key === 'end' ? 3 : 2); });
     return S;
   }
 
@@ -436,8 +476,9 @@ var LESSON = (function () {
     if (has(T, 'count') || has(T, 'find')) eq.push('Карточки с цифрами от 1 до 5.');
     if (has(T, 'mnemo')) eq.push('Мнемотаблица для составления рассказа.');
     if (has(T, 'prep')) eq.push('Коробка и игрушка для игры с предлогами.');
-    eq.push('Рабочие листы, простые и цветные карандаши.');
+    if (!T.length) eq.push('Рабочие листы, простые и цветные карандаши.');
     eq.push('Сюрпризный персонаж (игрушка или картинка).');
+    if (T.length) eq.push('Рабочие листы: ' + T.map(function (t, i) { return (i + 1) + ') «' + t.title + '»'; }).join(', ') + '; цветные и простые карандаши.');
     if (L.tech.ict) eq.push('Ноутбук (интерактивная доска), мультимедийная презентация.');
     if (L.tech.move) eq.push('Музыкальное сопровождение для динамической паузы.');
 
@@ -485,6 +526,9 @@ var LESSON = (function () {
     if (sw.length) home.push('Ежедневно повторяйте слова со звуком ' + sn(L.sound) + ': ' + sw.slice(0, 8).join(', ') + '. Следите за правильным произношением звука.');
     if (th.story) home.push('Составьте вместе рассказ про ' + (th.story.about || DB.acc(th.story.word)) + ' по схеме из рабочего листа.');
     if (th.finger) home.push('Повторите пальчиковую гимнастику «' + th.finger.name + '».');
+    var X = L.extra || {};
+    if ((X.chist || []).length) home.push('Повторяйте чистоговорки: ' + X.chist.slice(0, 3).map(function (c) { return '«' + c + '»'; }).join(' '));
+    if (X.poem) home.push('Выучите стихотворение «' + X.poem.name + '»: ' + X.poem.lines.join(' / '));
     if (th.lit && th.lit.length) home.push('Прочитайте ребёнку: ' + th.lit[0] + '. Обсудите прочитанное.');
     home.push('Выполните с ребёнком задания рабочего листа.');
 
@@ -499,6 +543,46 @@ var LESSON = (function () {
     return { equipment: eq, prelim: prelim, integration: integ, activities: acts, methods: methods, technologies: tech, home: home, results: results, soundWords: sw };
   }
 
+  /* ---------- технологическая карта ---------- */
+  var PHASES = [
+    { n: 'I', name: 'Вводная часть (мотивационно-ориентировочный этап)' },
+    { n: 'II', name: 'Основная часть (практический этап)' },
+    { n: 'III', name: 'Заключительная часть (рефлексивно-оценочный этап)' }
+  ];
+  var KID = /^(Дети|Ребёнок|Ребенок)/;
+
+  /** Абзацы колонок «Деятельность логопеда» и «Деятельность детей»: {t, b, i} */
+  function stageColumns(s) {
+    var teacher = [{ t: s.teacher }], children = [{ t: s.children }], poem = null;
+    function flush() { if (poem) { teacher.push({ t: poem.join(' / '), i: true }); poem = null; } }
+    s.speech.forEach(function (sp) {
+      var who = sp[0], txt = String(sp[1] || '').trim();
+      if (!txt) return;
+      if (who === 'Текст') { (poem = poem || []).push(txt.replace(/\s*\([^)]*\)\s*$/, '')); return; }
+      flush();
+      if (who === 'Игра') teacher.push({ t: 'Д/и ' + txt, b: true });
+      else if (who === 'Упражнение') teacher.push({ t: '• ' + txt });
+      else if (KID.test(who)) children.push(who.indexOf('образец') >= 0 ? { t: txt, i: true } : { t: '– ' + txt });
+      else teacher.push({ t: '– ' + txt });
+    });
+    flush();
+    return { teacher: teacher, children: children };
+  }
+
+  /** Техкарта: [{n, name, min, stages: [{n, name, min, aim, teacher, children, methods, result}]}] */
+  function card(plan) {
+    return PHASES.map(function (ph, i) {
+      var list = plan.stages.filter(function (s) { return s.phase === i + 1; });
+      return {
+        n: ph.n, name: ph.name, min: list.reduce(function (a, s) { return a + s.min; }, 0),
+        stages: list.map(function (s) {
+          var c = stageColumns(s);
+          return { n: s.n, name: s.name, min: s.min, aim: s.aim, teacher: c.teacher, children: c.children, methods: s.methods, result: s.result };
+        })
+      };
+    }).filter(function (ph) { return ph.stages.length; });
+  }
+
   function build(L) {
     L.tasks = L.tasks || [];
     var st = stages(L);
@@ -508,5 +592,5 @@ var LESSON = (function () {
     };
   }
 
-  return { build: build, duration: duration, soundWords: soundWords, goal: goal };
+  return { build: build, duration: duration, soundWords: soundWords, goal: goal, card: card, PHASES: PHASES };
 })();

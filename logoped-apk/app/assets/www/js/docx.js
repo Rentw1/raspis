@@ -177,7 +177,7 @@ var DOCX = (function () {
           paras.forEach(function (pt) {
             var runs = typeof pt === 'string' ? [[pt, { b: c.b || isHead, i: c.i, size: size, color: c.color || (isHead ? o.headColor : null) }]] : pt;
             x += self.pXml(runs.map(function (r) { return typeof r === 'string' ? [r, { size: size }] : [r[0], Object.assign({ size: size }, r[1] || {})]; }),
-              { style: 'TableText', align: c.align || (isHead ? 'center' : 'left') });
+              { style: 'TableText', align: c.align || (isHead ? 'center' : 'left'), keepNext: !!c.keepNext });
           });
         }
         x += '</w:tc>';

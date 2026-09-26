@@ -30,6 +30,36 @@ var EXPORT = (function () {
     });
   }
 
+  /** Паспорт занятия (шапка техкарты): [[заголовок, текст или абзацы]] */
+  function passport(L, plan, S, tasks) {
+    var o = plan.obj, ex = plan.ex;
+    var num = function (arr) { return arr.map(function (x, i) { return (i + 1) + '. ' + x; }); };
+    var rows = [
+      ['Педагог', U.cap(S.position || 'учитель-логопед') + (S.teacher ? ' ' + S.teacher : '')],
+      ['Образовательная область', 'Речевое развитие (в интеграции: ' + ex.integration.filter(function (x) { return x[0] !== 'Речевое развитие'; }).map(function (x) { return x[0].toLowerCase(); }).join(', ') + ')'],
+      ['Лексическая тема', '«' + L.theme.title + '»'],
+      ['Возрастная группа', plan.age.name + ', группа компенсирующей направленности для детей с ТНР' + (S.group ? ' «' + S.group.replace(/[«»"]/g, '') + '»' : '')],
+      ['Речевое заключение', L.conclusion || 'ОНР III уровня'],
+      ['Форма, тип, длительность', plan.form.name + ' занятие; ' + (L.kind === 'new' ? 'изучение нового материала' : 'закрепление пройденного материала') + '; ' + U.min(plan.total) + ' (СанПиН 1.2.3685-21)'],
+      ['Направление работы', dirName(L.direction)]
+    ];
+    if (L.sound) rows.push(['Звук', L.sound2 ? 'Дифференциация ' + sn(L.sound) + ' – ' + sn(L.sound2) : sn(L.sound) + ' — автоматизация']);
+    rows.push(['Цель', plan.goal]);
+    rows.push(['Задачи', [[['Коррекционно-образовательные:', { b: true }]]].concat(num(o.edu)).concat([[['Коррекционно-развивающие:', { b: true }]]]).concat(num(o.dev)).concat([[['Коррекционно-воспитательные:', { b: true }]]]).concat(num(o.vos))]);
+    rows.push(['Планируемые результаты', ex.results]);
+    rows.push(['Словарная работа', [
+      'Предметный словарь: ' + L.words.map(function (e) { return e.w; }).join(', ') + '.',
+      L.theme.lex && L.theme.lex.v ? 'Глагольный словарь: ' + L.theme.lex.v.join(', ') + '.' : '',
+      L.theme.lex && L.theme.lex.a ? 'Словарь признаков: ' + L.theme.lex.a.join(', ') + '.' : ''
+    ].filter(Boolean)]);
+    rows.push(['Оборудование и материалы', ex.equipment]);
+    rows.push(['Предварительная работа', ex.prelim]);
+    rows.push(['Методы и приёмы', ex.methods.map(function (m) { return U.cap(m) + '.'; })]);
+    rows.push(['Педагогические технологии', U.cap(ex.technologies.join('; ')) + '.']);
+    rows.push(['Виды детской деятельности', U.cap(ex.activities.join(', ')) + '.']);
+    return rows;
+  }
+
   /**
    * L — параметры занятия, plan — LESSON.build, tasks — задания, pngs — PNG-байты картинок заданий (по порядку),
    * S — настройки (организация, педагог, что включать).
@@ -45,7 +75,7 @@ var EXPORT = (function () {
     if (on('title')) {
       d.p(S.orgFull || '', { align: 'center', indent: 0, line: 276 });
       d.p('', { indent: 0 });
-      d.p('КОНСПЕКТ', { align: 'center', indent: 0, b: true, size: 36, before: 2600, after: 120 });
+      d.p(on('conspect') ? 'КОНСПЕКТ' : (on('techcard') ? 'ТЕХНОЛОГИЧЕСКАЯ КАРТА' : 'МАТЕРИАЛЫ'), { align: 'center', indent: 0, b: true, size: 36, before: 2600, after: 120 });
       titleLines(L, plan, S).forEach(function (t, i) { d.p(t, { align: 'center', indent: 0, b: i === 1, line: 300 }); });
       d.p('Форма проведения: ' + plan.form.name.toLowerCase() + '; тип: ' + (L.kind === 'new' ? 'изучение нового материала' : 'закрепление пройденного материала') + '; продолжительность: ' + U.min(plan.total) + '.',
         { align: 'center', indent: 0, i: true, size: 24, before: 200, line: 276 });
@@ -54,63 +84,50 @@ var EXPORT = (function () {
       if (S.group) d.p('Группа: ' + S.group, { align: 'right', indent: 0, line: 276 });
       d.p(U.dateLong(new Date(L.date || Date.now())), { align: 'right', indent: 0, line: 276 });
       d.p((S.city || '') + (S.city ? ', ' : '') + year, { align: 'center', indent: 0, before: 2400 });
-      d.pageBreak();
     }
 
-    /* ---- Информационная карта ---- */
+    var secN = 0;
+    var H = function (text, o) { d.h((++secN) + '. ' + text, o); };
+    var portraitHas = on('title');
+
+    /* ---- Информационная карта (отдельно, если нужна) ---- */
     if (on('info')) {
-      d.h('1. Информационная карта занятия');
-      var o = plan.obj, ex = plan.ex;
-      var num = function (arr) { return arr.map(function (x, i) { return (i + 1) + '. ' + x; }); };
-      var rows = [
-        ['Лексическая тема', '«' + L.theme.title + '»'],
-        ['Возрастная группа', plan.age.name + ', группа компенсирующей направленности для детей с ТНР' + (S.group ? ' «' + S.group.replace(/[«»"]/g, '') + '»' : '')],
-        ['Речевое заключение', L.conclusion || 'ОНР III уровня'],
-        ['Форма организации', plan.form.name + ' занятие'],
-        ['Тип занятия', L.kind === 'new' ? 'Изучение нового материала' : 'Закрепление пройденного материала'],
-        ['Направление работы', dirName(L.direction)],
-        ['Продолжительность', U.min(plan.total) + ' (СанПиН 1.2.3685-21, табл. 6.6)'],
-        ['Звук', L.sound ? (L.sound2 ? 'Дифференциация ' + sn(L.sound) + ' – ' + sn(L.sound2) : sn(L.sound) + ' — автоматизация') : '—'],
-        ['Цель', plan.goal],
-        ['Задачи', [[['Коррекционно-образовательные:', { b: true }]]].concat(num(o.edu)).concat([[['Коррекционно-развивающие:', { b: true }]]]).concat(num(o.dev)).concat([[['Коррекционно-воспитательные:', { b: true }]]]).concat(num(o.vos))],
-        ['Интеграция образовательных областей (ФОП ДО)', ex.integration.map(function (x) { return x[0] + ': ' + x[1] + '.'; })],
-        ['Виды детской деятельности', U.cap(ex.activities.join(', ')) + '.'],
-        ['Методы и приёмы', ex.methods.map(function (m) { return U.cap(m) + '.'; })],
-        ['Педагогические технологии', U.cap(ex.technologies.join('; ')) + '.'],
-        ['Оборудование и материалы', ex.equipment],
-        ['Предварительная работа', ex.prelim],
-        ['Словарная работа', [
-          'Предметный словарь: ' + L.words.map(function (e) { return e.w; }).join(', ') + '.',
-          L.theme.lex && L.theme.lex.v ? 'Глагольный словарь: ' + L.theme.lex.v.join(', ') + '.' : '',
-          L.theme.lex && L.theme.lex.a ? 'Словарь признаков: ' + L.theme.lex.a.join(', ') + '.' : ''
-        ].filter(Boolean)],
-        ['Планируемые результаты', ex.results]
-      ];
-      d.table(rows.map(function (r) { return [{ text: r[0], b: true }, { text: r[1] }]; }), { widths: [4.6, 11.9], size: 24, header: 0 });
+      if (on('title')) d.pageBreak();
+      H('Информационная карта занятия');
+      d.table(passport(L, plan, S, tasks).map(function (r) { return [{ text: r[0], b: true }, { text: r[1] }]; }), { widths: [4.6, 11.9], size: 24, header: 0 });
+      portraitHas = true;
     }
 
-    /* ---- Технологическая карта (альбомная) ---- */
+    /* ---- Технологическая карта (альбомная): паспорт + ход занятия по частям ---- */
     if (on('techcard')) {
-      d.endSection({ titlePg: on('title') });
-      d.h('2. Технологическая карта занятия (' + U.min(plan.total) + ')');
-      var head = ['№', 'Этап, время', 'Задачи этапа', 'Деятельность логопеда', 'Деятельность детей', 'Методы, приёмы, формы', 'Планируемый результат'];
+      if (portraitHas) d.endSection({ titlePg: on('title') });
+      H('Технологическая карта логопедического занятия');
+      if (!on('info')) {
+        d.table(passport(L, plan, S, tasks).map(function (r) { return [{ text: r[0], b: true }, { text: r[1] }]; }), { widths: [5.6, 20.1], size: 22, header: 0 });
+      }
+      d.h('Ход занятия (' + U.min(plan.total) + ')', { level: 2 });
+      var head = ['Этап, время', 'Задачи этапа', 'Деятельность учителя-логопеда', 'Деятельность детей', 'Методы и приёмы', 'Планируемый результат'];
       var tr = [head];
-      plan.stages.forEach(function (s) {
-        tr.push([
-          { text: String(s.n), align: 'center' },
-          { text: [[[s.name, { b: true }]], s.min + ' мин'] },
-          s.aim, s.teacher, s.children, s.methods, s.result
-        ]);
+      var paras = function (list) { return list.map(function (x) { return [[x.t, { b: !!x.b, i: !!x.i }]]; }); };
+      LESSON.card(plan).forEach(function (ph) {
+        tr.push([{ text: [[[ph.n + '. ' + ph.name + ' — ' + U.min(ph.min), { b: true }]]], span: 6, shade: 'EDEDED', align: 'center', keepNext: true }]);
+        ph.stages.forEach(function (st) {
+          tr.push([
+            { text: [[[st.n + '. ' + st.name, { b: true }]], [[U.min(st.min), { i: true }]]] },
+            st.aim, { text: paras(st.teacher) }, { text: paras(st.children) }, st.methods, st.result
+          ]);
+        });
       });
-      d.table(tr, { widths: [0.8, 3.6, 4.0, 5.5, 4.4, 3.7, 3.7], size: 22, header: 1, headShade: 'D9D9D9', cantSplit: true });
-      d.endSection({ landscape: true, margins: [2, 2, 2, 2] });
-    } else {
+      d.table(tr, { widths: [3.8, 3.3, 7.6, 4.5, 3.1, 3.4], size: 20, header: 1, headShade: 'D9D9D9' });
+      d.endSection({ landscape: true, margins: [2, 2, 2, 2], titlePg: !portraitHas && on('title') });
+      portraitHas = false;
+    } else if (portraitHas) {
       d.endSection({ titlePg: on('title') });
     }
 
     /* ---- Ход занятия ---- */
     if (on('conspect')) {
-      d.h('3. Ход занятия', { pageBreak: false });
+      H('Ход занятия (конспект)', { pageBreak: false });
       plan.stages.forEach(function (s) {
         d.h(s.n + '. ' + s.name + ' (' + U.min(s.min) + ')', { level: 2 });
         d.p([['Задача этапа: ', { i: true, b: true }], [s.aim, { i: true }]], { size: sz });
@@ -120,21 +137,38 @@ var EXPORT = (function () {
 
     /* ---- Домашнее задание ---- */
     if (on('home')) {
-      d.h('4. Задание для закрепления дома (для родителей)');
+      H('Задание для закрепления дома (для родителей)');
       plan.ex.home.forEach(function (h, i) { d.p((i + 1) + '. ' + h, { size: sz }); });
+    }
+
+    /* ---- Дополнительный речевой материал (подготовлен с помощью ИИ) ---- */
+    var X = L.extra;
+    if (X && on('extra')) {
+      H('Дополнительный речевой материал');
+      d.p([['Подготовлено с помощью ИИ (' + (X.by || 'ИИ') + '), проверено педагогом.', { i: true }]], { size: 22 });
+      var sub = function (t) { d.h(t, { level: 2 }); };
+      if ((X.chist || []).length) { sub('Чистоговорки' + (L.sound ? ' на звук ' + sn(L.sound) : '')); X.chist.forEach(function (c) { d.p('– ' + c, { size: sz, indent: 0, left: 709 }); }); }
+      if ((X.skor || []).length) { sub('Скороговорки'); X.skor.forEach(function (c) { d.p('– ' + c, { size: sz, indent: 0, left: 709 }); }); }
+      if ((X.riddles || []).length) { sub('Загадки'); X.riddles.forEach(function (r) { d.p([['«' + r[1] + '» ', {}], ['(' + r[0] + ')', { i: true }]], { size: sz }); }); }
+      if (X.poem) { sub('Стихотворение «' + X.poem.name + '»'); X.poem.lines.forEach(function (l) { d.p([[l, { i: true }]], { size: sz, indent: 0, left: 1134, line: 276 }); }); }
+      if (X.retell) {
+        sub('Рассказ для пересказа «' + X.retell.title + '»');
+        d.p(X.retell.text, { size: sz });
+        (X.questions || []).forEach(function (q, i) { d.p((i + 1) + '. ' + q, { size: sz, indent: 0, left: 709 }); });
+      }
     }
 
     /* ---- Ключи ---- */
     if (on('keys') && tasks.length) {
-      d.h('5. Ключи к заданиям рабочего листа (для педагога)');
+      H('Ключи к заданиям рабочего листа (для педагога)');
       tasks.forEach(function (t, i) { d.p([['Задание ' + (i + 1) + ' «' + t.title + '». ', { b: true }], [t.note, {}]], { size: sz }); });
     }
 
     /* ---- Источники ---- */
     if (on('sources')) {
-      d.h('6. Нормативно-правовая база');
+      H('Нормативно-правовая база');
       METHODS.NPA.forEach(function (x, i) { d.p((i + 1) + '. ' + x, { size: sz }); });
-      d.h('7. Список литературы');
+      H('Список литературы');
       METHODS.LITERATURE.forEach(function (x, i) { d.p((i + 1) + '. ' + x, { size: sz }); });
       d.p('Иллюстрации: OpenMoji — открытый проект эмодзи (openmoji.org), лицензия CC BY-SA 4.0' +
         (Object.keys(IMG.overrides).some(function (k) { return IMG.overrides[k] && IMG.overrides[k].src === 'arasaac'; }) ? '; пиктограммы ARASAAC (arasaac.org), автор Sergio Palao, лицензия CC BY-NC-SA 4.0, собственность Правительства Арагона' : '') + '.',
@@ -174,26 +208,32 @@ var EXPORT = (function () {
   /* ---------- HTML для печати (Android → Печать/PDF) ---------- */
   function html(L, plan, tasks, dataUrls, S, part) {
     var e = U.esc;
-    var css = '@page{size:A4;margin:15mm 15mm 15mm 20mm}body{font-family:"Times New Roman",serif;font-size:13pt;line-height:1.4;color:#000}' +
+    var css = '@page{size:A4;margin:15mm 15mm 15mm 20mm}@page land{size:A4 landscape;margin:12mm}.land{page:land;break-before:page;break-after:page}body{font-family:"Times New Roman",serif;font-size:13pt;line-height:1.4;color:#000}' +
       'h1{font-size:15pt;text-align:center;text-transform:uppercase;margin:14pt 0 8pt}h2{font-size:13pt;margin:10pt 0 4pt}' +
       'table{border-collapse:collapse;width:100%;font-size:11pt}td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top}th{background:#e6e6e6}' +
       '.task{border:1.5px solid #b9bdd6;border-radius:10px;padding:8pt 10pt;margin:0 0 10pt;page-break-inside:avoid}' +
       '.task h3{margin:0 0 4pt;color:#1f2a6b;font-size:14pt}.task p{margin:0 0 6pt;font-size:12pt}.task img{width:100%;display:block}' +
       '.sheet-title{text-align:center;color:#1f2a6b;font-size:18pt;font-weight:bold;margin:0}.sub{text-align:center;color:#4338ca}' +
-      '.pb{page-break-before:always}.sp{margin:2pt 0}.poem{font-style:italic;margin:0 0 0 30pt}.muted{color:#555;font-size:10pt}';
+      '.pb{page-break-before:always}.sp{margin:2pt 0}.poem{font-style:italic;margin:0 0 0 30pt}.muted{color:#555;font-size:10pt}' +
+      '.pass th{width:28%;text-align:left;background:#f2f2f2}.tc{font-size:9.5pt}.tc thead{display:table-header-group}.tc td.ph{background:#ededed;font-weight:bold;text-align:center}.cp{margin:0 0 2pt}';
     var h = ['<!doctype html><html><head><meta charset="utf-8"><title>' + e(L.theme.title) + '</title><style>' + css + '</style></head><body>'];
     if (part !== 'sheet') {
       h.push('<p style="text-align:center">' + e(S.orgFull || '') + '</p>');
       h.push('<h1>Конспект</h1><p style="text-align:center">' + titleLines(L, plan, S).map(e).join('<br>') + '</p>');
       h.push('<p style="text-align:right">Составитель: ' + e(S.position || 'учитель-логопед') + ' ' + e(S.teacher || '') + '</p>');
-      h.push('<h2>Цель</h2><p>' + e(plan.goal) + '</p><h2>Задачи</h2>');
-      [['Коррекционно-образовательные', plan.obj.edu], ['Коррекционно-развивающие', plan.obj.dev], ['Коррекционно-воспитательные', plan.obj.vos]].forEach(function (g) {
-        h.push('<p><b>' + g[0] + ':</b></p><ol>' + g[1].map(function (x) { return '<li>' + e(x) + '</li>'; }).join('') + '</ol>');
-      });
-      h.push('<h2>Оборудование</h2><ul>' + plan.ex.equipment.map(function (x) { return '<li>' + e(x) + '</li>'; }).join('') + '</ul>');
-      h.push('<h1 class="pb">Технологическая карта</h1><table><tr><th>Этап, время</th><th>Задачи</th><th>Деятельность логопеда</th><th>Деятельность детей</th><th>Результат</th></tr>' +
-        plan.stages.map(function (s) { return '<tr><td><b>' + s.n + '. ' + e(s.name) + '</b><br>' + s.min + ' мин</td><td>' + e(s.aim) + '</td><td>' + e(s.teacher) + '</td><td>' + e(s.children) + '</td><td>' + e(s.result) + '</td></tr>'; }).join('') + '</table>');
-      h.push('<h1 class="pb">Ход занятия</h1>');
+      h.push('<div class="land"><h1>Технологическая карта логопедического занятия</h1><table class="pass">' +
+        passport(L, plan, S, tasks).map(function (r) {
+          var v = Array.isArray(r[1]) ? r[1].map(function (x) { return typeof x === 'string' ? e(x) : '<b>' + e(x[0][0]) + '</b>'; }).join('<br>') : e(r[1]);
+          return '<tr><th>' + e(r[0]) + '</th><td>' + v + '</td></tr>';
+        }).join('') + '</table>');
+      var para = function (list) { return list.map(function (x) { var t = e(x.t); return '<p class="cp">' + (x.b ? '<b>' + t + '</b>' : x.i ? '<i>' + t + '</i>' : t) + '</p>'; }).join(''); };
+      h.push('<h2>Ход занятия (' + U.min(plan.total) + ')</h2><table class="tc"><thead><tr><th>Этап, время</th><th>Задачи этапа</th><th>Деятельность учителя-логопеда</th><th>Деятельность детей</th><th>Методы и приёмы</th><th>Планируемый результат</th></tr></thead><tbody>' +
+        LESSON.card(plan).map(function (ph) {
+          return '<tr><td colspan="6" class="ph">' + ph.n + '. ' + e(ph.name) + ' — ' + U.min(ph.min) + '</td></tr>' + ph.stages.map(function (st) {
+            return '<tr><td><b>' + st.n + '. ' + e(st.name) + '</b><br><i>' + U.min(st.min) + '</i></td><td>' + e(st.aim) + '</td><td>' + para(st.teacher) + '</td><td>' + para(st.children) + '</td><td>' + e(st.methods) + '</td><td>' + e(st.result) + '</td></tr>';
+          }).join('');
+        }).join('') + '</tbody></table></div>');
+      h.push('<h1>Ход занятия</h1>');
       plan.stages.forEach(function (s) {
         h.push('<h2>' + s.n + '. ' + e(s.name) + ' (' + s.min + ' мин)</h2>');
         s.speech.forEach(function (sp) {
@@ -204,6 +244,15 @@ var EXPORT = (function () {
         });
       });
       h.push('<h1>Задание для закрепления дома</h1><ol>' + plan.ex.home.map(function (x) { return '<li>' + e(x) + '</li>'; }).join('') + '</ol>');
+      var X = L.extra;
+      if (X) {
+        h.push('<h1>Дополнительный речевой материал</h1><p class="muted">Подготовлено с помощью ИИ (' + e(X.by || 'ИИ') + '), проверено педагогом.</p>');
+        if ((X.chist || []).length) h.push('<h2>Чистоговорки</h2>' + X.chist.map(function (c) { return '<p class="sp">– ' + e(c) + '</p>'; }).join(''));
+        if ((X.skor || []).length) h.push('<h2>Скороговорки</h2>' + X.skor.map(function (c) { return '<p class="sp">– ' + e(c) + '</p>'; }).join(''));
+        if ((X.riddles || []).length) h.push('<h2>Загадки</h2>' + X.riddles.map(function (r) { return '<p class="sp">«' + e(r[1]) + '» <i>(' + e(r[0]) + ')</i></p>'; }).join(''));
+        if (X.poem) h.push('<h2>Стихотворение «' + e(X.poem.name) + '»</h2>' + X.poem.lines.map(function (l) { return '<p class="poem">' + e(l) + '</p>'; }).join(''));
+        if (X.retell) h.push('<h2>Рассказ для пересказа «' + e(X.retell.title) + '»</h2><p>' + e(X.retell.text) + '</p>' + ((X.questions || []).length ? '<ol>' + X.questions.map(function (q) { return '<li>' + e(q) + '</li>'; }).join('') + '</ol>' : ''));
+      }
     }
     if (part !== 'plan' && tasks.length) {
       h.push('<div class="' + (part === 'sheet' ? '' : 'pb') + '"><p class="sheet-title">РАБОЧИЙ ЛИСТ</p><p class="sub">Лексическая тема «' + e(L.theme.title) + '»' + (L.sound ? ' · звук ' + e(sn(L.sound)) : '') + '</p>' +
@@ -218,5 +267,5 @@ var EXPORT = (function () {
     return h.join('');
   }
 
-  return { docx: docx, html: html, fileName: fileName, titleLines: titleLines };
+  return { docx: docx, html: html, fileName: fileName, titleLines: titleLines, passport: passport };
 })();
