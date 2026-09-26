@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108"><defs><clipPath id="c"><circle cx="54" cy="54" r="50"/></clipPath><filter id="o" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="1.2" stdDeviation="1.2" flood-opacity=".25"/></filter></defs><g filter="url(#o)"><g clip-path="url(#c)">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset=".55" stop-color="#4338CA"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
+    <radialGradient id="r" cx=".25" cy=".2" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="108" height="108" fill="url(#g)"/>
+  <rect width="108" height="108" fill="url(#r)"/>
+<g transform="translate(54 54) scale(1.32) translate(-54 -54)">
+  <defs>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.6" flood-color="#1e1b4b" flood-opacity=".35"/></filter>
+  </defs>
+  <g filter="url(#sh)">
+    <path d="M40 31h28a13 13 0 0 1 13 13v14a13 13 0 0 1-13 13H50l-10.5 9.2a1.4 1.4 0 0 1-2.3-1.2l1.3-8.3A13 13 0 0 1 27 58V44a13 13 0 0 1 13-13z" fill="#fff"/>
+  </g>
+  <g stroke-linecap="round" stroke-width="5.2" fill="none">
+    <path d="M38 47.5v7" stroke="#F97316"/>
+    <path d="M46 43.5v15" stroke="#EAB308"/>
+    <path d="M54 39.5v23" stroke="#22C55E"/>
+    <path d="M62 43.5v15" stroke="#06B6D4"/>
+    <path d="M70 47.5v7" stroke="#6366F1"/>
+  </g>
+  <path d="M80.5 23.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6-4.6-1.9 4.6-1.9z" fill="#FDE047"/>
+  <circle cx="87.5" cy="38" r="1.9" fill="#FDE047"/>
+</g></g></g></svg>
