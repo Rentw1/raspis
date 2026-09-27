@@ -259,7 +259,7 @@ var DOCX = (function () {
       '<dc:title>' + esc(meta.title || '') + '</dc:title><dc:subject>' + esc(meta.subject || '') + '</dc:subject><dc:creator>' + esc(meta.author || '') + '</dc:creator>' +
       '<cp:keywords>' + esc(meta.keywords || '') + '</cp:keywords><dc:language>ru-RU</dc:language>' +
       '<dcterms:created xsi:type="dcterms:W3CDTF">' + now + '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' + now + '</dcterms:modified></cp:coreProperties>';
-    var app = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Логопед-конструктор</Application></Properties>';
+    var app = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Конструктор занятий</Application></Properties>';
 
     var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +

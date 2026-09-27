@@ -1,4 +1,4 @@
-name: Логопед-конструктор APK
+name: Конструктор занятий APK
 
 on:
   push:
@@ -49,6 +49,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Logoped-Konstruktor-apk
+          name: Konstruktor-Zanyatiy-apk
           path: logoped-apk/dist/*.apk
           if-no-files-found: error

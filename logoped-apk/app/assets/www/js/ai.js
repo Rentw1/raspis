@@ -69,7 +69,7 @@ var AI = (function () {
     var h = { 'Content-Type': 'application/json' };
     var k = key(p);
     if (k) h.Authorization = 'Bearer ' + k;
-    if (p.id === 'openrouter') { h['HTTP-Referer'] = 'https://github.com/Rentw1/raspis'; h['X-Title'] = 'Logoped Konstruktor'; }
+    if (p.id === 'openrouter') { h['HTTP-Referer'] = 'https://github.com/Rentw1/raspis'; h['X-Title'] = 'Konstruktor Zanyatiy'; }
     return h;
   }
 

@@ -60,6 +60,8 @@ public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
     static final String START_URL = "https://" + HOST + "/index.html";
     static final String AUTHORITY = "ru.shatlyk.logoped.docs";
+    /** Папка в «Загрузках» для готовых документов — по названию приложения */
+    static final String FOLDER = "Конструктор занятий";
     private static final String TAG = "Logoped";
     private static final int REQ_FILE = 1001;
     private static final int REQ_PERM = 1002;
@@ -318,7 +320,7 @@ public class MainActivity extends Activity {
             ContentValues cv = new ContentValues();
             cv.put("_display_name", name);
             cv.put("mime_type", mime);
-            cv.put("relative_path", Environment.DIRECTORY_DOWNLOADS + "/Логопед");
+            cv.put("relative_path", Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER);
             cv.put("is_pending", 1);
             Uri item = cr.insert(Uri.parse("content://media/external/downloads"), cv);
             if (item == null) throw new IOException("Не удалось создать файл в «Загрузках»");
@@ -341,11 +343,11 @@ public class MainActivity extends Activity {
                     c.close();
                 }
             }
-            where = "Загрузки › Логопед › " + realName;
+            where = "Загрузки › " + FOLDER + " › " + realName;
         } else {
             File dir = null;
             if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Логопед");
+                dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER);
                 if (!dir.exists() && !dir.mkdirs()) dir = null;
             } else {
                 ui.post(new Runnable() {
@@ -492,7 +494,7 @@ public class MainActivity extends Activity {
                         c.setReadTimeout(Math.max(10000, Math.min(timeoutMs <= 0 ? 25000 : timeoutMs, 300000)));
                         c.setInstanceFollowRedirects(true);
                         c.setRequestMethod(m);
-                        c.setRequestProperty("User-Agent", "LogopedKonstruktor (Android; educational, non-commercial)");
+                        c.setRequestProperty("User-Agent", "KonstruktorZanyatiy (Android; educational, non-commercial)");
                         c.setRequestProperty("Accept", binary ? "image/*,*/*;q=0.8" : "application/json,*/*;q=0.8");
                         if (headersJson != null && headersJson.length() > 0) {
                             JSONObject h = new JSONObject(headersJson);
@@ -569,7 +571,7 @@ public class MainActivity extends Activity {
             ui.post(new Runnable() {
                 @Override
                 public void run() {
-                    final String job = jobName == null || jobName.length() == 0 ? "Логопед" : jobName;
+                    final String job = jobName == null || jobName.length() == 0 ? FOLDER : jobName;
                     final WebView pv = new WebView(MainActivity.this);
                     pv.getSettings().setJavaScriptEnabled(false);
                     pv.setWebViewClient(new WebViewClient() {

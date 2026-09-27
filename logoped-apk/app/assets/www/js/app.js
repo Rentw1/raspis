@@ -1,5 +1,5 @@
 'use strict';
-/* Интерфейс приложения «Логопед-конструктор». */
+/* Интерфейс приложения «Конструктор занятий». */
 (function () {
   var app = document.getElementById('app');
   var dockIn = document.getElementById('dockIn');
@@ -170,7 +170,7 @@
     document.getElementById('orgSub').textContent = screen === 'result' ? (theme().title + ' · ' + (ST.sound ? 'звук ' + PH.BY_ID[ST.sound].name : 'без звука')) : (S.orgShort || '');
     document.getElementById('btnBack').classList.toggle('hidden', screen !== 'result');
     document.getElementById('logo').classList.toggle('hidden', screen === 'result');
-    document.getElementById('appTitle').textContent = screen === 'result' ? 'Готовое занятие' : 'Логопед-конструктор';
+    document.getElementById('appTitle').textContent = screen === 'result' ? 'Готовое занятие' : 'Конструктор занятий';
   }
 
   function card(num, title, hint, body) {
@@ -869,7 +869,7 @@
     });
     chain.then(function () {
       busy(false);
-      NET.printHtml(EXPORT.html(R.L, R.plan, R.tasks, urls, S, part === 'all' ? null : part), 'Логопед — ' + R.L.theme.title);
+      NET.printHtml(EXPORT.html(R.L, R.plan, R.tasks, urls, S, part === 'all' ? null : part), EXPORT.fileName(R.L, 'pdf', part).replace(/\.pdf$/, ''));
     }).catch(function (err) { busy(false); snack('Ошибка печати: ' + err.message); });
   }
 
