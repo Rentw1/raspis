@@ -20,9 +20,9 @@ ctx.window = ctx;
 vm.createContext(ctx);
 ['js/util.js', 'js/phonetics.js', 'js/art.js', 'js/art2.js', 'data/db.js', 'data/methods.js', 'data/omcodes.js', 'data/omindex.js']
   .concat(fs.readdirSync(path.join(WWW, 'data')).filter(f => /^themes_.*\.js$/.test(f)).sort().map(f => 'data/' + f))
-  .concat(['js/images.js', 'js/tasks.js', 'js/lesson.js', 'js/online.js', 'js/ai.js'])
+  .concat(['js/images.js', 'js/tasks.js', 'js/lesson.js', 'js/online.js', 'js/ai.js', 'js/docx.js', 'js/export.js'])
   .forEach(rel => vm.runInContext(fs.readFileSync(path.join(WWW, rel), 'utf8'), ctx, { filename: rel }));
-const { DB, TASKS, LESSON, METHODS, IMG, PH, AI, NET } = vm.runInContext('({ DB, TASKS, LESSON, METHODS, IMG, PH, AI, NET })', ctx);
+const { DB, TASKS, LESSON, METHODS, IMG, PH, AI, NET, EXPORT, DOCX, U } = vm.runInContext('({ DB, TASKS, LESSON, METHODS, IMG, PH, AI, NET, EXPORT, DOCX, U })', ctx);
 
 /* Тема «от ИИ» (типичный ответ модели: в ограждении ```, с лишней запятой, с ошибками) — проверяем разбор и сборку занятий */
 const AI_SAMPLE = {
@@ -143,7 +143,58 @@ DB.themes.forEach(th => {
   });
 });
 
-console.log(`Тем: ${DB.themes.length}, занятий собрано: ${lessons}, заданий: ${tasksTotal}, замечаний: ${issues.length}`);
+/* Экспорт: Word и HTML по частям — всё занятие, только рабочий лист, лист с ответами, без листа */
+const INC = { title: true, info: false, techcard: true, conspect: true, home: true, extra: true, keys: true, sources: true, worksheet: true };
+const SETTINGS = { orgFull: 'МАДОУ «Центр развития ребенка – детский сад № 1 «Шатлык»»', city: 'г. Набережные Челны', teacher: 'Иванова И. И.', position: 'учитель-логопед', fontSize: 14, include: INC };
+function partSettings(part) {
+  if (part === 'sheet' || part === 'sheetKeys') {
+    const inc = {}; Object.keys(INC).forEach(k => { inc[k] = false; }); inc.worksheet = true;
+    return Object.assign({}, SETTINGS, { include: inc, answersOnSheet: part === 'sheetKeys' });
+  }
+  if (part === 'plan') return Object.assign({}, SETTINGS, { include: Object.assign({}, INC, { worksheet: false }) });
+  return SETTINGS;
+}
+let exportsN = 0;
+['osen', 'dom_zhiv', 'zim_ptic', 'transport', 'ovoshchi', 'kosmos'].map(id => DB.byId[id] || DB.themes[0]).forEach(th => {
+  const words = th.words.map(w => DB.word(w)).filter(e => e && IMG.hasPicture(e));
+  METHODS.DIRECTIONS.forEach(dir => {
+    const L = { theme: th, words, age: '5', form: 'front', kind: 'consolidate', direction: dir.id, sound: null, sound2: null,
+      duration: 0, conclusion: 'ОНР III уровня', tech, captions: true, seed: 'exp' + th.id, reroll: {}, date: 0 };
+    const tasks = TASKS.build(L, TASKS.defaults(L, TASKS.available(L)));
+    L.tasks = tasks;
+    const plan = LESSON.build(L), kind = EXPORT.kindOf(L);
+    ['all', 'sheet', 'sheetKeys', 'plan'].forEach(part => {
+      const label = 'экспорт ' + th.id + '/' + dir.id + '/' + part;
+      let xml, page;
+      try {
+        const zip = Buffer.from(EXPORT.docx(L, plan, tasks, [], partSettings(part))).toString('utf8');
+        xml = zip.slice(zip.indexOf('<w:body>'), zip.indexOf('</w:body>'));
+        page = EXPORT.html(L, plan, tasks, [], Object.assign({}, SETTINGS, { answersOnSheet: true }), part === 'all' ? null : part);
+      } catch (e) { issues.push(label + ': ошибка ' + e.message); return; }
+      exportsN++;
+      const sheet = xml.indexOf('РАБОЧИЙ ЛИСТ'), keysN = (xml.match(/Для взрослого/g) || []).length, htmlKeys = (page.match(/Для взрослого/g) || []).length;
+      const name = EXPORT.fileName(L, 'docx', part);
+      if (/[\\/:*?"<>|]/.test(name) || !/\.docx$/.test(name)) issues.push(label + ': имя файла ' + name);
+      if (part === 'sheet' || part === 'sheetKeys') {
+        if (sheet < 0) issues.push(label + ': нет рабочего листа');
+        if (/КОНСПЕКТ|Технологическая карта|Ход занятия/.test(xml)) issues.push(label + ': в рабочий лист попал конспект');
+        if (xml.indexOf('<w:sectPr') >= 0 && xml.indexOf('<w:sectPr') < sheet) issues.push(label + ': пустая страница перед рабочим листом');
+        if (keysN !== (part === 'sheetKeys' ? tasks.length : 0)) issues.push(label + ': ответов в листе ' + keysN + ' из ' + tasks.length);
+        if (htmlKeys !== (part === 'sheetKeys' ? tasks.length : 0)) issues.push(label + ': ответов в HTML ' + htmlKeys);
+        if (/Технологическая карта/.test(page)) issues.push(label + ': в HTML листа попал конспект');
+        if (!/^Рабочий лист/.test(name)) issues.push(label + ': имя файла листа ' + name);
+      } else {
+        if (xml.indexOf('Технологическая карта ' + kind.gen) < 0) issues.push(label + ': нет заголовка техкарты «' + kind.gen + '»');
+        if (xml.indexOf(DOCX.esc(kind.area)) < 0) issues.push(label + ': нет образовательной области «' + kind.area + '»');
+        if (part === 'plan' && sheet >= 0) issues.push(label + ': рабочий лист в файле без листа');
+        if (part === 'all' && sheet < 0) issues.push(label + ': нет рабочего листа');
+        if (page.indexOf(U.esc('Технологическая карта ' + kind.gen)) < 0) issues.push(label + ': нет техкарты в HTML');
+      }
+    });
+  });
+});
+
+console.log(`Тем: ${DB.themes.length}, занятий собрано: ${lessons}, заданий: ${tasksTotal}, файлов экспорта: ${exportsN}, замечаний: ${issues.length}`);
 if (issues.length) {
   console.log(issues.slice(0, 60).join('\n'));
   process.exitCode = 1;

@@ -89,6 +89,8 @@ main { max-width: 880px; margin: 0 auto; padding: 14px 12px 120px; }
 .chip .badge { background: var(--brand); color: #fff; border-radius: 999px; font-size: .7rem; padding: 1px 7px; }
 .chip .badge.zero { background: #c9ccdd; }
 .chip.add { border-style: dashed; color: var(--brand); }
+.chips.tight { gap: 6px; }
+.chips.tight .chip { padding: 5px 10px; font-size: .85rem; min-height: 34px; }
 .snd { min-width: 54px; justify-content: center; }
 
 .list { display: flex; flex-direction: column; gap: 6px; }
@@ -157,6 +159,8 @@ select:focus, input:focus, textarea:focus { outline: 2px solid rgba(67, 56, 202,
 .task .pic img { display: block; width: 100%; }
 .task .note { font-size: .8rem; color: var(--muted); margin-top: 8px; background: #f7f8fc; padding: 8px 10px; border-radius: 10px; }
 .task .acts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.sheetbar .acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.sheetbar .acts .btn { flex: 1 1 auto; }
 .stage { border-left: 4px solid var(--brand); background: #fff; border-radius: 0 16px 16px 0; padding: 12px 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
 .stage h3 { margin: 0 0 4px; font-size: 1rem; display: flex; gap: 8px; }
 .stage h3 .min { margin-left: auto; color: var(--brand); white-space: nowrap; font-size: .85rem; }

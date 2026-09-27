@@ -225,10 +225,11 @@
     // 3. Направление
     app.appendChild(card(3, 'Направление работы', null, [
       h('div', { class: 'list' }, METHODS.DIRECTIONS.map(function (d) {
-        return h('div', { class: 'opt' + (ST.direction === d.id ? ' on' : ''), onclick: function () { ST.direction = d.id; ST.taskIds = null; changed(); } }, [
+        return h('div', { class: 'opt' + (ST.direction === d.id ? ' on' : ''), onclick: function () { ST.direction = d.id; ST.taskIds = null; ST.sheetSet = null; changed(); } }, [
           h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: d.name })])
         ]);
-      }))
+      })),
+      h('div', { class: 'small muted', style: 'margin-top:8px', text: 'Математика, окружающий мир и смешанное занятие строятся на словах той же лексической темы: счёт, сравнение и знания о мире — на тех же картинках.' })
     ]));
 
     // 4. Звук
@@ -290,20 +291,54 @@
     var avail = TASKS.available(L);
     var ids = currentTaskIds(L, avail);
     var names = {}; TASKS.CATALOG.forEach(function (c) { names[c[0]] = c[1]; });
+    var areaName = {}; TASKS.AREAS.forEach(function (a) { areaName[a[0]] = a[1]; });
+    var flt = areaName[ST.areaFilter] ? ST.areaFilter : 'all';
+    var inArea = function (id, a) { return a === 'all' || TASKS.areasOf(id).indexOf(a) >= 0; };
+    var shown = avail.filter(function (id) { return inArea(id, flt); });
     app.appendChild(card(7, 'Задания рабочего листа', ids.length + ' из ' + avail.length, [
-      h('div', { class: 'small muted', style: 'margin-bottom:8px', text: 'Все задания строятся только из слов выбранной темы; картинки в заданиях — те же слова, что в тексте задания.' }),
-      h('div', { class: 'list' }, avail.map(function (id) {
+      h('div', { class: 'small muted', style: 'margin-bottom:4px', text: 'Все задания строятся только из слов выбранной темы; картинки в заданиях — те же слова, что в тексте задания.' }),
+      h('div', { class: 'label', text: 'Готовый набор заданий' }),
+      h('div', { class: 'chips tight' }, SHEET_SETS.map(function (s) {
+        var on = s[0] === 'auto' ? !ST.taskIds : !!ST.taskIds && ST.sheetSet === s[0];
+        return h('button', { class: 'chip' + (on ? ' on' : ''), text: s[1], onclick: function () { pickSheetSet(s[0]); } });
+      })),
+      h('div', { class: 'label', text: 'Показать задания' }),
+      h('div', { class: 'chips tight' }, [['all', 'Все']].concat(TASKS.AREAS).map(function (a) {
+        var n = avail.filter(function (id) { return inArea(id, a[0]); }).length;
+        var sel = ids.filter(function (id) { return inArea(id, a[0]); }).length;
+        return h('button', { class: 'chip' + (flt === a[0] ? ' on' : ''), onclick: function () { ST.areaFilter = a[0]; changed(); } },
+          [a[1], h('span', { class: 'badge' + (sel ? '' : ' zero'), text: sel + '/' + n })]);
+      })),
+      h('div', { class: 'list', style: 'margin-top:10px' }, shown.map(function (id) {
         var on = ids.indexOf(id) >= 0;
         return h('div', { class: 'opt' + (on ? ' on' : ''), onclick: function () {
           var cur = currentTaskIds(config(), avail);
           ST.taskIds = on ? cur.filter(function (x) { return x !== id; }) : cur.concat([id]);
+          ST.sheetSet = null;
           changed();
-        } }, [h('span', { class: 'box', text: on ? '✓' : '' }), h('div', { class: 'txt' }, [h('b', { text: names[id] || id })])]);
+        } }, [h('span', { class: 'box', text: on ? '✓' : '' }), h('div', { class: 'txt' }, [h('b', { text: names[id] || id }),
+          h('span', { text: TASKS.areasOf(id).map(function (a) { return areaName[a]; }).join(' · ') })])]);
       })),
-      ST.taskIds ? h('button', { class: 'btn ghost sm', style: 'margin-top:8px', text: 'Подобрать автоматически', onclick: function () { ST.taskIds = null; changed(); } }) : null
+      h('div', { class: 'small muted', style: 'margin-top:8px', text: 'Задания разных разделов можно смешивать: отметьте нужные в любом разделе — все они попадут в один рабочий лист, конспект и техкарту.' }),
+      ST.taskIds ? h('button', { class: 'btn ghost sm', style: 'margin-top:8px', text: 'Подобрать автоматически', onclick: function () { ST.taskIds = null; ST.sheetSet = null; changed(); } }) : null
     ]));
 
     dock([h('button', { class: 'btn primary', html: ICON.wand + 'Собрать занятие', onclick: buildLesson })]);
+  }
+
+  var SHEET_SETS = [['auto', 'По направлению'], ['speech', 'Речь'], ['math', 'Математика'], ['world', 'Окружающий мир'], ['mixed', 'Смешанный']];
+  /** Готовый набор заданий области (или смешанный) без смены направления занятия */
+  function pickSheetSet(id) {
+    ST.sheetSet = id;
+    if (id === 'auto') { ST.taskIds = null; changed(); return; }
+    var L = config();
+    var avail = TASKS.available(L);
+    var dir = id !== 'speech' ? id : (['math', 'world', 'mixed'].indexOf(L.direction) >= 0 ? 'complex' : L.direction);
+    var picks = TASKS.defaults(Object.assign({}, L, { direction: dir }), avail);
+    if (!picks.length) { snack('Для этой темы нет подходящих заданий.'); return; }
+    ST.taskIds = picks;
+    ST.areaFilter = id === 'mixed' ? 'all' : id;
+    changed();
   }
 
   function currentTaskIds(L, avail) {
@@ -652,6 +687,14 @@
     var P = R.plan;
     if (curTab === 'sheet') {
       if (!R.tasks.length) app.appendChild(h('div', { class: 'empty', text: 'Нет заданий. Вернитесь в конструктор и выберите задания.' }));
+      else app.appendChild(h('div', { class: 'card sheetbar' }, [
+        h('div', { class: 'small muted', text: 'Рабочий лист отдельным файлом — для ребёнка или родителей (' + R.tasks.length + ' ' + U.plural(R.tasks.length, 'задание', 'задания', 'заданий') + '):' }),
+        h('div', { class: 'acts' }, [
+          h('button', { class: 'btn sm primary', html: ICON.word + 'Скачать лист', onclick: function () { saveDocx('sheet', false); } }),
+          h('button', { class: 'btn sm soft', html: ICON.print + 'PDF / печать', onclick: function () { doPrint('sheet'); } }),
+          h('button', { class: 'btn sm soft', html: ICON.share + 'Отправить', onclick: function () { saveDocx('sheet', true); } })
+        ])
+      ]));
       R.tasks.forEach(function (t, i) {
         app.appendChild(h('div', { class: 'task' }, [
           h('div', { class: 'th' }, [h('span', { class: 'n', text: 'Задание ' + (i + 1) + '.' }), h('b', { text: t.title }), h('span', { class: 'area', text: t.area })]),
@@ -702,7 +745,7 @@
         ph.stages.forEach(function (st) {
           app.appendChild(h('div', { class: 'card tc' }, [
             h('div', { class: 'tch' }, [h('b', { text: st.n + '. ' + st.name }), h('span', { class: 'min', text: U.min(st.min) })]),
-            col('Задачи этапа', [{ t: st.aim }]), col('Деятельность учителя-логопеда', st.teacher), col('Деятельность детей', st.children),
+            col('Задачи этапа', [{ t: st.aim }]), col(EXPORT.teacherCol(S), st.teacher), col('Деятельность детей', st.children),
             col('Методы и приёмы', [{ t: st.methods }]), col('Планируемый результат', [{ t: st.result }])
           ]));
         });
@@ -756,58 +799,73 @@
 
   /* ---------- экспорт ---------- */
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  function makeDocx() {
+  /** Что попадает в файл: 'all' — всё занятие по настройкам, 'sheet' — только рабочий лист, 'sheetKeys' — лист с ответами, 'plan' — без листа */
+  var PARTS = [
+    ['all', 'Всё занятие', 'Титульный лист, техкарта, конспект, рабочий лист — как в настройках'],
+    ['sheet', 'Только рабочий лист', 'Задания с картинками для ребёнка — с первой страницы'],
+    ['sheetKeys', 'Рабочий лист с ответами', 'Под каждым заданием — подсказка и ответ для взрослого'],
+    ['plan', 'Техкарта и конспект', 'Всё, кроме рабочего листа']
+  ];
+  function isSheetPart(part) { return part === 'sheet' || part === 'sheetKeys'; }
+  function partDialog(title, note, onPick) {
+    var body = h('div', { class: 'list' }, PARTS.map(function (o) {
+      return h('div', { class: 'opt', onclick: function () { closeSheet(); onPick(o[0]); } }, [h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: o[1] }), h('span', { text: o[2] })])]);
+    }));
+    if (note) body.appendChild(h('div', { class: 'small muted', style: 'margin-top:10px', text: note }));
+    openSheet(title, body);
+  }
+  function docxSettings(part) {
+    if (isSheetPart(part)) {
+      var inc = {};
+      Object.keys(DEF_SETTINGS.include).forEach(function (k) { inc[k] = false; });
+      inc.worksheet = true;
+      return Object.assign({}, S, { include: inc, answersOnSheet: part === 'sheetKeys' });
+    }
+    if (part === 'plan') return Object.assign({}, S, { include: Object.assign({}, S.include, { worksheet: false }) });
+    return S;
+  }
+  function makeDocx(part) {
+    part = part || 'all';
+    var S2 = docxSettings(part);
+    var list = S2.include.worksheet === false ? [] : R.tasks;
     busy('Готовлю документ Word…', 0);
     var pngs = [];
     var chain = Promise.resolve();
-    R.tasks.forEach(function (t, i) {
+    list.forEach(function (t, i) {
       chain = chain.then(function () {
         return TASKS.render(t, 1).then(function (cv) { pngs[i] = IMG.toPngBytes(cv); }).catch(function () { pngs[i] = null; })
-          .then(function () { busy('Готовлю документ Word…', (i + 1) / (R.tasks.length + 1)); });
+          .then(function () { busy('Готовлю документ Word…', (i + 1) / (list.length + 1)); });
       });
     });
     return chain.then(function () {
-      var bytes = EXPORT.docx(R.L, R.plan, R.tasks, pngs, S);
-      return { name: EXPORT.fileName(R.L, 'docx'), bytes: bytes };
+      var bytes = EXPORT.docx(R.L, R.plan, R.tasks, pngs, S2);
+      return { name: EXPORT.fileName(R.L, 'docx', part), bytes: bytes };
     });
   }
-  function exportDocx() {
-    makeDocx().then(function (f) { return NET.saveFile(f.name, f.bytes, DOCX_MIME).then(function (res) { return [f, res]; }); })
+  function saveDocx(part, share) {
+    if (isSheetPart(part) && !R.tasks.length) { snack('В рабочем листе нет заданий.'); return; }
+    makeDocx(part).then(function (f) { return NET.saveFile(f.name, f.bytes, DOCX_MIME).then(function (res) { return [f, res]; }); })
       .then(function (x) {
         busy(false);
         var f = x[0], res = x[1];
-        if (!res || !res.ok) { snack('Не удалось сохранить: ' + ((res && res.error) || 'ошибка')); return; }
-        R.saved = res.name || f.name;
-        snack('Сохранено: ' + (res.path || f.name), NET.isAndroid() ? [['Открыть', function () { NET.openFile(R.saved, DOCX_MIME); }], ['Отправить', function () { NET.shareFile(R.saved, DOCX_MIME); }]] : []);
+        if (!res || !res.ok) { snack((share ? 'Не удалось подготовить файл: ' : 'Не удалось сохранить: ') + ((res && res.error) || 'ошибка')); return; }
+        var saved = R.saved = res.name || f.name;
+        if (share && NET.isAndroid()) { NET.shareFile(saved, DOCX_MIME); return; }
+        snack('Сохранено: ' + (res.path || f.name), NET.isAndroid() ? [['Открыть', function () { NET.openFile(saved, DOCX_MIME); }], ['Отправить', function () { NET.shareFile(saved, DOCX_MIME); }]] : []);
       }).catch(function (err) { busy(false); snack('Ошибка: ' + err.message); });
   }
-  function shareDocx() {
-    if (!NET.isAndroid()) { exportDocx(); return; }
-    makeDocx().then(function (f) { return NET.saveFile(f.name, f.bytes, DOCX_MIME).then(function (res) { return [f, res]; }); })
-      .then(function (x) {
-        busy(false);
-        if (!x[1] || !x[1].ok) { snack('Не удалось подготовить файл'); return; }
-        R.saved = x[1].name || x[0].name;
-        NET.shareFile(R.saved, DOCX_MIME);
-      }).catch(function (err) { busy(false); snack('Ошибка: ' + err.message); });
-  }
+  function exportDocx() { partDialog('Сохранить в Word', null, function (p) { saveDocx(p, false); }); }
+  function shareDocx() { partDialog('Отправить документ Word', 'Откроется список приложений: мессенджер, почта, облачный диск.', function (p) { saveDocx(p, true); }); }
   function printDialog() {
-    var body = h('div', { class: 'list' }, [
-      ['sheet', 'Только рабочий лист', 'Задания с картинками — удобно печатать детям'],
-      ['plan', 'Только конспект', 'Цели, техкарта, ход занятия, задание родителям'],
-      ['all', 'Всё вместе', 'Конспект и рабочий лист']
-    ].map(function (o) {
-      return h('div', { class: 'opt', onclick: function () { closeSheet(); doPrint(o[0]); } }, [h('span', { class: 'dot' }), h('div', { class: 'txt' }, [h('b', { text: o[1] }), h('span', { text: o[2] })])]);
-    }));
-    body.appendChild(h('div', { class: 'small muted', style: 'margin-top:10px', text: 'Откроется окно печати Android: можно выбрать принтер или «Сохранить как PDF».' }));
-    openSheet('Печать / PDF', body);
+    partDialog('Печать / PDF', 'Откроется окно печати Android: можно выбрать принтер или «Сохранить как PDF».', doPrint);
   }
   function doPrint(part) {
+    if (isSheetPart(part) && !R.tasks.length) { snack('В рабочем листе нет заданий.'); return; }
     busy('Готовлю страницы для печати…');
     var urls = [];
     var chain = Promise.resolve();
-    R.tasks.forEach(function (t, i) {
-      chain = chain.then(function () { return TASKS.render(t, 0.8).then(function (cv) { urls[i] = cv.toDataURL('image/png'); }); });
+    if (part !== 'plan') R.tasks.forEach(function (t, i) {
+      chain = chain.then(function () { return TASKS.render(t, 0.8).then(function (cv) { urls[i] = cv.toDataURL('image/png'); }).catch(function () { urls[i] = ''; }); });
     });
     chain.then(function () {
       busy(false);

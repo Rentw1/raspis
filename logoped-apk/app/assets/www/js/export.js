@@ -4,19 +4,47 @@ var EXPORT = (function () {
   function sn(id) { return id && PH.BY_ID[id] ? PH.BY_ID[id].name : ''; }
   function dirName(id) { var d = METHODS.DIRECTIONS.filter(function (x) { return x.id === id; })[0]; return d ? d.name : ''; }
 
+  /** Вид занятия по направлению: заголовки, образовательная область, подпись рабочего листа, имя файла */
+  var KINDS = {
+    math: { gen: 'занятия по формированию элементарных математических представлений', about: 'на материале лексической темы', subject: 'Занятие по ФЭМП',
+      area: 'Познавательное развитие (формирование элементарных математических представлений)', main: ['Познавательное развитие'], sheet: 'Математика', tag: 'математика' },
+    world: { gen: 'занятия по ознакомлению с окружающим миром', about: 'по лексической теме', subject: 'Занятие по ознакомлению с окружающим миром',
+      area: 'Познавательное развитие (ознакомление с окружающим миром)', main: ['Познавательное развитие'], sheet: 'Окружающий мир', tag: 'окружающий мир' },
+    mixed: { gen: 'интегрированного занятия', about: 'по лексической теме', subject: 'Интегрированное занятие',
+      area: 'Речевое развитие; познавательное развитие (ФЭМП, ознакомление с окружающим миром)', main: ['Речевое развитие', 'Познавательное развитие'], sheet: 'Речь, математика, окружающий мир', tag: 'смешанное' }
+  };
+  var SPEECH_KIND = { gen: 'логопедического занятия', about: 'по лексической теме', subject: 'Логопедическое занятие', area: 'Речевое развитие', main: ['Речевое развитие'], sheet: '', tag: '' };
+  function kindOf(L) { return KINDS[L.direction] || SPEECH_KIND; }
+  function teacherCol(S) {
+    var p = String(S.position || 'учитель-логопед').toLowerCase();
+    if (/логопед/.test(p)) return 'Деятельность учителя-логопеда';
+    if (/дефектолог/.test(p)) return 'Деятельность учителя-дефектолога';
+    if (/воспитател/.test(p)) return 'Деятельность воспитателя';
+    return 'Деятельность педагога';
+  }
+  function sheetSub(L) {
+    var k = kindOf(L);
+    return (k.sheet ? k.sheet + ' · лексическая тема' : 'Лексическая тема') + ' «' + L.theme.title + '»' +
+      (L.sound ? (L.sound2 ? ' · звуки ' + sn(L.sound) + ' – ' + sn(L.sound2) : ' · звук ' + sn(L.sound)) : '');
+  }
+  function isSheetPart(part) { return part === 'sheet' || part === 'sheetKeys'; }
+
   function titleLines(L, plan, S) {
-    var a = plan.age, f = plan.form;
+    var a = plan.age, f = plan.form, k = kindOf(L);
     var lines = [
-      f.gen + ' логопедического занятия',
-      'по лексической теме «' + L.theme.title + '»' + (L.sound ? (L.sound2 ? ' (дифференциация звуков ' + sn(L.sound) + ' – ' + sn(L.sound2) + ')' : ' (автоматизация звука ' + sn(L.sound) + ')') : ''),
+      f.gen + ' ' + k.gen,
+      k.about + ' «' + L.theme.title + '»' + (L.sound ? (L.sound2 ? ' (дифференциация звуков ' + sn(L.sound) + ' – ' + sn(L.sound2) + ')' : ' (автоматизация звука ' + sn(L.sound) + ')') : ''),
       'для детей ' + a.short + ' группы компенсирующей направленности',
       'для детей с тяжёлыми нарушениями речи (' + a.years + ' лет)'
     ];
     return lines;
   }
 
-  function fileName(L, ext) {
-    var name = 'Занятие ' + L.theme.title.replace(/[.,]/g, '') + (L.sound ? ' ' + L.sound : '') + ' ' + U.dateShort(new Date(L.date || Date.now()));
+  /** part: 'sheet' — рабочий лист, 'sheetKeys' — лист с ответами, 'plan' — без листа, иначе всё занятие */
+  function fileName(L, ext, part) {
+    var k = kindOf(L);
+    var head = isSheetPart(part) ? 'Рабочий лист' + (part === 'sheetKeys' ? ' с ответами' : '') : (part === 'plan' ? 'Конспект' : 'Занятие');
+    var name = head + (k.tag ? ' (' + k.tag + ')' : '') + ' ' + L.theme.title.replace(/[.,]/g, '') + (L.sound ? ' ' + L.sound : '') + ' ' + U.dateShort(new Date(L.date || Date.now()));
     return name.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.' + ext;
   }
 
@@ -32,11 +60,11 @@ var EXPORT = (function () {
 
   /** Паспорт занятия (шапка техкарты): [[заголовок, текст или абзацы]] */
   function passport(L, plan, S, tasks) {
-    var o = plan.obj, ex = plan.ex;
+    var o = plan.obj, ex = plan.ex, k = kindOf(L);
     var num = function (arr) { return arr.map(function (x, i) { return (i + 1) + '. ' + x; }); };
     var rows = [
       ['Педагог', U.cap(S.position || 'учитель-логопед') + (S.teacher ? ' ' + S.teacher : '')],
-      ['Образовательная область', 'Речевое развитие (в интеграции: ' + ex.integration.filter(function (x) { return x[0] !== 'Речевое развитие'; }).map(function (x) { return x[0].toLowerCase(); }).join(', ') + ')'],
+      ['Образовательная область', [k.area, 'В интеграции: ' + ex.integration.filter(function (x) { return k.main.indexOf(x[0]) < 0; }).map(function (x) { return x[0].toLowerCase(); }).join(', ') + '.']],
       ['Лексическая тема', '«' + L.theme.title + '»'],
       ['Возрастная группа', plan.age.name + ', группа компенсирующей направленности для детей с ТНР' + (S.group ? ' «' + S.group.replace(/[«»"]/g, '') + '»' : '')],
       ['Речевое заключение', L.conclusion || 'ОНР III уровня'],
@@ -70,6 +98,7 @@ var EXPORT = (function () {
     var d = new DOCX.Doc({ size: (S.fontSize || 14) * 2 });
     var sz = (S.fontSize || 14) * 2;
     var year = new Date(L.date || Date.now()).getFullYear();
+    var kind = kindOf(L);
 
     /* ---- Титульный лист ---- */
     if (on('title')) {
@@ -101,12 +130,12 @@ var EXPORT = (function () {
     /* ---- Технологическая карта (альбомная): паспорт + ход занятия по частям ---- */
     if (on('techcard')) {
       if (portraitHas) d.endSection({ titlePg: on('title') });
-      H('Технологическая карта логопедического занятия');
+      H('Технологическая карта ' + kind.gen);
       if (!on('info')) {
         d.table(passport(L, plan, S, tasks).map(function (r) { return [{ text: r[0], b: true }, { text: r[1] }]; }), { widths: [5.6, 20.1], size: 22, header: 0 });
       }
       d.h('Ход занятия (' + U.min(plan.total) + ')', { level: 2 });
-      var head = ['Этап, время', 'Задачи этапа', 'Деятельность учителя-логопеда', 'Деятельность детей', 'Методы и приёмы', 'Планируемый результат'];
+      var head = ['Этап, время', 'Задачи этапа', teacherCol(S), 'Деятельность детей', 'Методы и приёмы', 'Планируемый результат'];
       var tr = [head];
       var paras = function (list) { return list.map(function (x) { return [[x.t, { b: !!x.b, i: !!x.i }]]; }); };
       LESSON.card(plan).forEach(function (ph) {
@@ -178,10 +207,9 @@ var EXPORT = (function () {
     /* ---- Рабочий лист ---- */
     var hasSheet = on('worksheet') && tasks.length;
     if (hasSheet) {
-      d.endSection({});
+      if (d.body.length) d.endSection({});
       d.p('РАБОЧИЙ ЛИСТ', { align: 'center', indent: 0, b: true, size: 32, color: '1F2A6B', after: 40 });
-      d.p('Лексическая тема «' + L.theme.title + '»' + (L.sound ? (L.sound2 ? ' · звуки ' + sn(L.sound) + ' – ' + sn(L.sound2) : ' · звук ' + sn(L.sound)) : ''),
-        { align: 'center', indent: 0, size: 26, color: '4338CA', line: 276 });
+      d.p(sheetSub(L), { align: 'center', indent: 0, size: 26, color: '4338CA', line: 276 });
       d.p('Имя ребёнка: ______________________________     Дата: ______________', { align: 'center', indent: 0, size: 24, before: 120, after: 120, line: 276 });
       var cellW = 17.6;
       tasks.forEach(function (t, i) {
@@ -199,15 +227,19 @@ var EXPORT = (function () {
         { size: 16, i: true, color: '8A8FB0', indent: 0, line: 240 });
     }
 
+    var onlySheet = hasSheet && !['title', 'info', 'techcard', 'conspect', 'home', 'extra', 'keys', 'sources'].some(on);
     return d.build({
-      title: 'Конспект логопедического занятия «' + L.theme.title + '»',
-      subject: 'Логопедическое занятие', author: S.teacher || '', keywords: 'логопед, ФОП ДО, ФАОП ДО, ' + L.theme.title
+      title: (onlySheet ? 'Рабочий лист' : 'Конспект ' + kind.gen) + ' «' + L.theme.title + '»',
+      subject: kind.subject, author: S.teacher || '',
+      keywords: 'логопед, ФОП ДО, ФАОП ДО, ' + (L.direction === 'math' || L.direction === 'mixed' ? 'ФЭМП, ' : '') + (L.direction === 'world' || L.direction === 'mixed' ? 'окружающий мир, ' : '') + L.theme.title
     }, hasSheet ? { margins: [1.5, 1.5, 1.5, 1.5] } : {});
   }
 
   /* ---------- HTML для печати (Android → Печать/PDF) ---------- */
   function html(L, plan, tasks, dataUrls, S, part) {
-    var e = U.esc;
+    var e = U.esc, kind = kindOf(L);
+    var keys = part === 'sheetKeys' || (part !== 'sheet' && !!S.answersOnSheet);
+    if (part === 'sheetKeys') part = 'sheet';
     var css = '@page{size:A4;margin:15mm 15mm 15mm 20mm}@page land{size:A4 landscape;margin:12mm}.land{page:land;break-before:page;break-after:page}body{font-family:"Times New Roman",serif;font-size:13pt;line-height:1.4;color:#000}' +
       'h1{font-size:15pt;text-align:center;text-transform:uppercase;margin:14pt 0 8pt}h2{font-size:13pt;margin:10pt 0 4pt}' +
       'table{border-collapse:collapse;width:100%;font-size:11pt}td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top}th{background:#e6e6e6}' +
@@ -221,13 +253,13 @@ var EXPORT = (function () {
       h.push('<p style="text-align:center">' + e(S.orgFull || '') + '</p>');
       h.push('<h1>Конспект</h1><p style="text-align:center">' + titleLines(L, plan, S).map(e).join('<br>') + '</p>');
       h.push('<p style="text-align:right">Составитель: ' + e(S.position || 'учитель-логопед') + ' ' + e(S.teacher || '') + '</p>');
-      h.push('<div class="land"><h1>Технологическая карта логопедического занятия</h1><table class="pass">' +
+      h.push('<div class="land"><h1>Технологическая карта ' + e(kind.gen) + '</h1><table class="pass">' +
         passport(L, plan, S, tasks).map(function (r) {
           var v = Array.isArray(r[1]) ? r[1].map(function (x) { return typeof x === 'string' ? e(x) : '<b>' + e(x[0][0]) + '</b>'; }).join('<br>') : e(r[1]);
           return '<tr><th>' + e(r[0]) + '</th><td>' + v + '</td></tr>';
         }).join('') + '</table>');
       var para = function (list) { return list.map(function (x) { var t = e(x.t); return '<p class="cp">' + (x.b ? '<b>' + t + '</b>' : x.i ? '<i>' + t + '</i>' : t) + '</p>'; }).join(''); };
-      h.push('<h2>Ход занятия (' + U.min(plan.total) + ')</h2><table class="tc"><thead><tr><th>Этап, время</th><th>Задачи этапа</th><th>Деятельность учителя-логопеда</th><th>Деятельность детей</th><th>Методы и приёмы</th><th>Планируемый результат</th></tr></thead><tbody>' +
+      h.push('<h2>Ход занятия (' + U.min(plan.total) + ')</h2><table class="tc"><thead><tr><th>Этап, время</th><th>Задачи этапа</th><th>' + e(teacherCol(S)) + '</th><th>Деятельность детей</th><th>Методы и приёмы</th><th>Планируемый результат</th></tr></thead><tbody>' +
         LESSON.card(plan).map(function (ph) {
           return '<tr><td colspan="6" class="ph">' + ph.n + '. ' + e(ph.name) + ' — ' + U.min(ph.min) + '</td></tr>' + ph.stages.map(function (st) {
             return '<tr><td><b>' + st.n + '. ' + e(st.name) + '</b><br><i>' + U.min(st.min) + '</i></td><td>' + e(st.aim) + '</td><td>' + para(st.teacher) + '</td><td>' + para(st.children) + '</td><td>' + e(st.methods) + '</td><td>' + e(st.result) + '</td></tr>';
@@ -255,11 +287,11 @@ var EXPORT = (function () {
       }
     }
     if (part !== 'plan' && tasks.length) {
-      h.push('<div class="' + (part === 'sheet' ? '' : 'pb') + '"><p class="sheet-title">РАБОЧИЙ ЛИСТ</p><p class="sub">Лексическая тема «' + e(L.theme.title) + '»' + (L.sound ? ' · звук ' + e(sn(L.sound)) : '') + '</p>' +
+      h.push('<div class="' + (part === 'sheet' ? '' : 'pb') + '"><p class="sheet-title">РАБОЧИЙ ЛИСТ</p><p class="sub">' + e(sheetSub(L)) + '</p>' +
         '<p style="text-align:center">Имя ребёнка: ____________________ Дата: __________</p></div>');
       tasks.forEach(function (t, i) {
         h.push('<div class="task"><h3>Задание ' + (i + 1) + '. ' + e(t.title) + '</h3><p>' + e(t.instr) + '</p>' + (dataUrls[i] ? '<img src="' + dataUrls[i] + '">' : '') +
-          (S.answersOnSheet ? '<p class="muted">Для взрослого: ' + e(t.note) + '</p>' : '') + '</div>');
+          (keys ? '<p class="muted">Для взрослого: ' + e(t.note) + '</p>' : '') + '</div>');
       });
       h.push('<p class="muted">Иллюстрации: OpenMoji (CC BY-SA 4.0).</p>');
     }
@@ -267,5 +299,5 @@ var EXPORT = (function () {
     return h.join('');
   }
 
-  return { docx: docx, html: html, fileName: fileName, titleLines: titleLines, passport: passport };
+  return { docx: docx, html: html, fileName: fileName, titleLines: titleLines, passport: passport, kindOf: kindOf, teacherCol: teacherCol };
 })();

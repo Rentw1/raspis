@@ -29,6 +29,23 @@ var LESSON = (function () {
       .replace(/\{A\}/g, cap(a || '')).replace(/\{a\}/g, a || '');
   }
 
+  var MATH_IDS = ['m_number', 'm_compare', 'm_order', 'm_pattern', 'm_size', 'm_sum', 'm_space'];
+  var WORLD_IDS = ['w_true', 'w_describe', 'w_diff'];
+  function mathIds(L) { return MATH_IDS.concat(L.direction === 'math' ? ['count', 'find'] : []); }
+  function maxCount(L) { return L.age === '4' ? 5 : 10; }
+  /** Что развивается в математических заданиях (для цели и задач) */
+  function mathSkills(L) {
+    var T = L.tasks || [], out = [];
+    if (has(T, 'm_number') || has(T, 'count') || has(T, 'find')) out.push('количественный счёт');
+    if (has(T, 'm_order')) out.push('порядковый счёт');
+    if (has(T, 'm_compare')) out.push('сравнение групп предметов');
+    if (has(T, 'm_size')) out.push('сравнение по величине');
+    if (has(T, 'm_pattern')) out.push('закономерности');
+    if (has(T, 'm_sum')) out.push('решение задач');
+    if (has(T, 'm_space')) out.push('ориентировка в пространстве');
+    return out.length ? out.join(', ') : 'счёт, сравнение групп предметов, ориентировка в пространстве';
+  }
+
   function age(L) { return METHODS.AGES.filter(function (a) { return a.id === L.age; })[0] || METHODS.AGES[1]; }
   function form(L) { return METHODS.FORMS.filter(function (f) { return f.id === L.form; })[0] || METHODS.FORMS[0]; }
 
@@ -49,6 +66,9 @@ var LESSON = (function () {
         return 'Совершенствование произносительной стороны речи на материале лексической темы ' + t + '.';
       case 'coherent': return 'Развитие связной речи: обучение составлению описательного рассказа с опорой на мнемотаблицу по лексической теме ' + t + '.';
       case 'literacy': return 'Совершенствование навыков звукового и слогового анализа слов на материале лексической темы ' + t + '.';
+      case 'math': return 'Формирование элементарных математических представлений (' + mathSkills(L) + ') на материале лексической темы ' + t + '.';
+      case 'world': return 'Расширение и уточнение представлений детей об окружающем мире по лексической теме ' + t + ', развитие познавательного интереса и связной речи.';
+      case 'mixed': return 'Развитие речи' + (L.sound ? ' (звук ' + s1 + ')' : '') + ', элементарных математических представлений и представлений об окружающем мире на материале лексической темы ' + t + '.';
       default:
         return 'Уточнение и активизация словаря, совершенствование грамматического строя речи' +
           (L.sound ? (L.sound2 ? ' и дифференциация звуков ' + s1 + ' – ' + s2 : ' и автоматизация звука ' + s1) : '') +
@@ -82,7 +102,17 @@ var LESSON = (function () {
       sinkvein: 'Учить составлять синквейн по лексической теме.',
       riddle: 'Учить отгадывать загадки и доказывать отгадку.',
       syll: 'Упражнять в делении слов на слоги.',
-      first: 'Учить выделять первый звук в слове и давать ему характеристику.'
+      first: 'Учить выделять первый звук в слове и давать ему характеристику.',
+      m_number: 'Упражнять в счёте в пределах ' + maxCount(L) + ', учить соотносить количество предметов с цифрой.',
+      m_compare: 'Учить сравнивать группы предметов по количеству, употреблять слова «больше», «меньше», «поровну»' + (L.age === '4' ? '' : ', знаки >, <, =') + '.',
+      m_order: 'Упражнять в порядковом счёте, согласовании порядковых числительных с существительными.',
+      m_pattern: 'Учить находить и продолжать закономерность в ряду предметов.',
+      m_size: 'Учить сравнивать предметы по величине, раскладывать их в порядке возрастания.',
+      m_sum: 'Учить решать простые задачи на сложение' + (L.age === '6' ? ' и вычитание' : '') + ' с опорой на наглядность.',
+      m_space: 'Учить ориентироваться на листе бумаги, употреблять слова «слева», «справа», «выше», «в центре», «в углу».',
+      w_true: 'Уточнять представления об объектах темы, учить находить ошибку в высказывании и исправлять её.',
+      w_describe: 'Учить узнавать предмет по описанию его признаков и действий.',
+      w_diff: 'Учить сравнивать изображения, находить отличия и называть их полным ответом.'
     };
     if (has(T, 'odd') && has(T, 'groups')) map.odd = map.groups = 'Учить классифицировать предметы по существенному признаку и объяснять свой выбор полным предложением.';
     var seen = {};
@@ -99,6 +129,7 @@ var LESSON = (function () {
     if (L.tech.move) dev.push('Развивать общую моторику, координацию речи с движением.');
     if (has(T, 'odd') || has(T, 'groups') || has(T, 'shadow') || has(T, 'overlap') || has(T, 'find')) dev.push('Развивать зрительное внимание, память, логическое мышление.');
     else dev.push('Развивать внимание, память, мышление.');
+    if (T.some(function (t) { return MATH_IDS.indexOf(t.id) >= 0; })) dev.push('Развивать логическое мышление, умение рассуждать и доказывать свой ответ.');
     if (L.tech.kinesio) dev.push('Развивать межполушарное взаимодействие, произвольность и самоконтроль.');
     var vos = [
       'Воспитывать ' + th.value + '.',
@@ -162,7 +193,7 @@ var LESSON = (function () {
       var group = L.sound ? PH.BY_ID[L.sound].group : 'none';
       var ex = METHODS.articulation(group, L.age);
       S.push({
-        key: 'artic', w: 2.4, name: 'Артикуляционная гимнастика',
+        key: 'artic', w: L.direction === 'math' || L.direction === 'world' ? 1.4 : 2.4, name: 'Артикуляционная гимнастика',
         aim: 'Развивать подвижность органов артикуляции' + (L.sound ? ', подготовить артикуляционный аппарат к произнесению ' + (PH.GROUP_NAMES[group] || 'звука') : '') + '.',
         speech: [['Логопед', 'Чтобы язычок хорошо работал, сделаем зарядку. Возьмите зеркала. Наш Весёлый Язычок тоже отправляется ' + th.place + '!']]
           .concat(ex.map(function (x) { return ['Упражнение', x.name + ' — ' + x.text]; })),
@@ -225,7 +256,9 @@ var LESSON = (function () {
         result: 'Дети знают и называют новые слова по теме, понимают их значение.'
       });
     } else {
-      var practice = T.filter(function (t) { return ['name', 'odd', 'many', 'count', 'dim', 'baby', 'food', 'home', 'tool', 'forms', 'poss', 'groups', 'find'].indexOf(t.id) >= 0; }).slice(0, 2);
+      var practiceIds = L.direction === 'math' ? mathIds(L) : (L.direction === 'world' ? WORLD_IDS.concat(['groups', 'odd', 'food', 'home', 'baby', 'tool'])
+        : ['name', 'odd', 'many', 'count', 'dim', 'baby', 'food', 'home', 'tool', 'forms', 'poss', 'groups', 'find']);
+      var practice = T.filter(function (t) { return practiceIds.indexOf(t.id) >= 0; }).slice(0, 2);
       var pSpeech = [['Логопед', 'Сегодня вы будете выполнять задания самостоятельно. Возьмите рабочие листы. Внимательно слушайте задание.']];
       practice.forEach(function (t) { pSpeech.push(['Логопед', 'Задание «' + t.title + '»' + ws(t) + '. ' + t.instr]); pSpeech.push([kids, 'Выполняют задание и объясняют: ' + U.lower(t.note)]); });
       S.push({
@@ -276,10 +309,11 @@ var LESSON = (function () {
     // 8. Лексико-грамматические игры
     var lexIds = ['many', 'count', 'find', 'dim', 'baby', 'food', 'home', 'tool', 'forms', 'poss', 'odd', 'groups', 'prep'];
     var usedInPractice = S.filter(function (s) { return s.key === 'practice'; }).map(function (s) { return s.used || []; })[0] || [];
-    var lexTasks = T.filter(function (t) { return lexIds.indexOf(t.id) >= 0 && t.play && usedInPractice.indexOf(t.id) < 0; });
+    var lexTasks = T.filter(function (t) { return lexIds.indexOf(t.id) >= 0 && mathIds(L).indexOf(t.id) < 0 && t.play && usedInPractice.indexOf(t.id) < 0; });
     var maxGames = L.form === 'ind' ? 2 : (total >= 25 ? 4 : 3);
     var games = lexTasks.slice(0, maxGames);
-    var talk = (th.talk || []).filter(function (tk) { return !/цвет/i.test(tk.name) || L.age === '4'; }).slice(0, games.length < 2 ? 2 : 1);
+    var isMath = L.direction === 'math';
+    var talk = (th.talk || []).filter(function (tk) { return !/цвет/i.test(tk.name) || L.age === '4'; }).slice(0, isMath ? (games.length ? 0 : 1) : (games.length < 2 ? 2 : 1));
     if (games.length || talk.length) {
       var gSpeech = [];
       games.forEach(function (t) {
@@ -295,8 +329,9 @@ var LESSON = (function () {
         });
       });
       S.push({
-        key: 'lex', w: 4.2, name: 'Лексико-грамматические игры',
-        aim: 'Совершенствовать грамматический строй речи, активизировать словарь по теме.',
+        key: 'lex', w: isMath ? 2 : 4.2,
+        name: L.direction === 'world' ? 'Познавательные игры по теме «' + th.title + '»' : (isMath ? 'Речевая разминка по теме «' + th.title + '»' : 'Лексико-грамматические игры'),
+        aim: L.direction === 'world' ? 'Уточнять и расширять представления об объектах темы, учить отвечать полным ответом.' : (isMath ? 'Активизировать словарь по теме, учить отвечать на вопросы полным ответом.' : 'Совершенствовать грамматический строй речи, активизировать словарь по теме.'),
         speech: gSpeech,
         teacher: 'Проводит игры: ' + games.map(function (t) { return '«' + t.play.name + '»'; }).concat(talk.map(function (tk) { return '«' + tk.name + '»'; })).join(', ') + '; даёт образец, исправляет ошибки.' + wsList(games),
         children: 'Отвечают полными ответами, согласуют слова в роде, числе и падеже.',
@@ -304,6 +339,29 @@ var LESSON = (function () {
         result: 'Дети правильно употребляют грамматические формы слов по теме.'
       });
     }
+
+    // 8а. Математика (ФЭМП) и 8б. окружающий мир — задания рабочего листа как игры
+    function gameStage(list, key, w, name, aim, teacher, children, methods, result) {
+      if (!list.length) return;
+      var sp = [];
+      list.forEach(function (t) { sp.push(['Игра', '«' + t.play.name + '»' + ws(t)]); sp = sp.concat(t.play.lines); });
+      S.push({ key: key, w: w, name: name, aim: aim, speech: sp, teacher: teacher + wsList(list), children: children, methods: methods, result: result });
+    }
+    var maxOther = L.form === 'ind' ? 2 : (total >= 25 ? 4 : 3);
+    var mTasks = T.filter(function (t) { return mathIds(L).indexOf(t.id) >= 0 && t.play && usedInPractice.indexOf(t.id) < 0; }).slice(0, maxOther);
+    gameStage(mTasks, 'math', 3.6, 'Математические игры и упражнения',
+      'Формировать элементарные математические представления на материале темы: ' + mathSkills(L) + '.',
+      'Проводит математические игры (' + mTasks.map(function (t) { return '«' + t.play.name + '»'; }).join(', ') + '), даёт образец ответа, помогает сосчитать, сравнить, найти закономерность.',
+      'Считают, сравнивают, отвечают полным ответом, объясняют свои действия.',
+      'Дидактические игры, наглядность (предметные картинки, цифры), вопросы, практические действия',
+      'Дети считают предметы, сравнивают группы и величину, ориентируются на листе, отвечают полным ответом.');
+    var wTasks = T.filter(function (t) { return WORLD_IDS.indexOf(t.id) >= 0 && t.play && usedInPractice.indexOf(t.id) < 0; }).slice(0, maxOther);
+    gameStage(wTasks, 'world', 3, 'Познавательная беседа: что мы знаем о теме «' + th.title + '»',
+      'Уточнять и обобщать представления детей об объектах темы, учить доказывать свой ответ.',
+      'Проводит игры (' + wTasks.map(function (t) { return '«' + t.play.name + '»'; }).join(', ') + '), задаёт вопросы, уточняет и обобщает ответы детей.',
+      'Отвечают на вопросы, находят ошибки, узнают предметы по описанию, доказывают свой ответ.',
+      'Беседа, дидактические игры, наглядность, проблемные вопросы',
+      'Дети называют признаки и действия объектов темы, исправляют неверные высказывания.');
 
     // 9. Динамическая пауза
     if (L.tech.move && th.move) {
@@ -441,7 +499,7 @@ var LESSON = (function () {
     function byKey(k) { return S.filter(function (s) { return s.key === k; })[0]; }
     var limit = Math.max(5, Math.floor(total * 0.8));
     [['artic', 'breath'], ['move', 'finger'], ['move', 'kinesio'], ['finger', 'kinesio'], ['artic', 'kinesio'],
-      ['practice', 'sheet'], ['lex', 'sheet'], ['demo', 'practice'], ['sound', 'sheet']].forEach(function (m) {
+      ['practice', 'sheet'], ['lex', 'sheet'], ['math', 'sheet'], ['world', 'sheet'], ['demo', 'practice'], ['sound', 'sheet'], ['lex', 'world']].forEach(function (m) {
       if (S.length > limit) merge(byKey(m[0]), byKey(m[1]));
     });
     while (S.length > total && S.length > 3) {
@@ -478,6 +536,7 @@ var LESSON = (function () {
     if (has(T, 'prep')) eq.push('Коробка и игрушка для игры с предлогами.');
     if (!T.length) eq.push('Рабочие листы, простые и цветные карандаши.');
     eq.push('Сюрпризный персонаж (игрушка или картинка).');
+    if (T.some(function (t) { return mathIds(L).indexOf(t.id) >= 0; })) eq.push('Карточки с цифрами от 1 до ' + maxCount(L) + (has(T, 'm_compare') && L.age !== '4' ? ', карточки со знаками >, <, =' : '') + ', счётные палочки или фишки.');
     if (T.length) eq.push('Рабочие листы: ' + T.map(function (t, i) { return (i + 1) + ') «' + t.title + '»'; }).join(', ') + '; цветные и простые карандаши.');
     if (L.tech.ict) eq.push('Ноутбук (интерактивная доска), мультимедийная презентация.');
     if (L.tech.move) eq.push('Музыкальное сопровождение для динамической паузы.');
@@ -492,7 +551,8 @@ var LESSON = (function () {
 
     var integ = [
       ['Речевое развитие', 'обогащение словаря, грамматический строй речи' + (L.sound ? ', звуковая культура речи' : '') + ', связная речь'],
-      ['Познавательное развитие', 'представления о предметах и явлениях по теме «' + th.title + '»' + (has(T, 'count') || has(T, 'find') ? ', счёт в пределах 5' : '') + (has(T, 'odd') || has(T, 'groups') ? ', классификация' : '')],
+      ['Познавательное развитие', 'представления о предметах и явлениях по теме «' + th.title + '»' +
+        (T.some(function (t) { return mathIds(L).indexOf(t.id) >= 0 || t.id === 'count' || t.id === 'find'; }) ? ', ФЭМП: ' + mathSkills(L) : '') + (has(T, 'odd') || has(T, 'groups') ? ', классификация' : '')],
       ['Социально-коммуникативное развитие', 'взаимодействие со взрослым и сверстниками, ' + th.value],
       ['Художественно-эстетическое развитие', 'восприятие фольклора (загадки, потешки)' + (has(T, 'color') ? ', раскрашивание' : '') + (L.tech.move ? ', музыкально-ритмические движения' : '')],
       ['Физическое развитие', [L.tech.move ? 'динамическая пауза' : '', L.tech.finger || L.tech.sujok ? 'пальчиковая гимнастика' : '', L.tech.breath ? 'дыхательная гимнастика' : '', L.tech.artic ? 'артикуляционная гимнастика' : ''].filter(Boolean).join(', ') || 'двигательная активность']
@@ -507,7 +567,7 @@ var LESSON = (function () {
     var methods = [
       'наглядные: показ предметных картинок, образец выполнения' + (has(T, 'mnemo') ? ', мнемотаблица' : ''),
       'словесные: беседа, вопросы, загадки, объяснение, образец речи логопеда, художественное слово',
-      'практические: дидактические игры и упражнения, работа в рабочем листе',
+      'практические: дидактические игры и упражнения' + (T.some(function (t) { return MATH_IDS.indexOf(t.id) >= 0; }) ? ', математические игры (счёт, сравнение)' : '') + ', работа в рабочем листе',
       'игровые: сюрпризный момент, игровая мотивация'
     ];
     var tech = ['игровые', 'здоровьесберегающие (' + [L.tech.artic ? 'артикуляционная' : '', L.tech.breath ? 'дыхательная' : '', L.tech.finger ? 'пальчиковая гимнастика' : '', L.tech.move ? 'динамическая пауза' : '', L.tech.sujok ? 'су-джок' : ''].filter(Boolean).join(', ') + ')', 'личностно ориентированные'];
@@ -530,6 +590,7 @@ var LESSON = (function () {
     if ((X.chist || []).length) home.push('Повторяйте чистоговорки: ' + X.chist.slice(0, 3).map(function (c) { return '«' + c + '»'; }).join(' '));
     if (X.poem) home.push('Выучите стихотворение «' + X.poem.name + '»: ' + X.poem.lines.join(' / '));
     if (th.lit && th.lit.length) home.push('Прочитайте ребёнку: ' + th.lit[0] + '. Обсудите прочитанное.');
+    if (T.some(function (t) { return MATH_IDS.indexOf(t.id) >= 0; })) home.push('Посчитайте вместе предметы по теме дома и на прогулке, сравните, чего больше, а чего меньше.');
     home.push('Выполните с ребёнком задания рабочего листа.');
 
     var results = [
@@ -538,6 +599,8 @@ var LESSON = (function () {
     if (has(T, 'many') || has(T, 'count') || has(T, 'dim') || has(T, 'baby') || has(T, 'poss') || has(T, 'forms')) results.push('Правильно образует и употребляет грамматические формы слов по теме.');
     if (L.sound) results.push('Правильно произносит звук ' + sn(L.sound) + ' в словах и фразах по теме; определяет место звука в слове.');
     if (has(T, 'mnemo')) results.push('Составляет описательный рассказ с опорой на схему.');
+    if (T.some(function (t) { return MATH_IDS.indexOf(t.id) >= 0; })) results.push('Выполняет математические задания на материале темы: ' + mathSkills(L) + '.');
+    if (T.some(function (t) { return WORLD_IDS.indexOf(t.id) >= 0; })) results.push('Имеет представления об объектах темы, узнаёт их по описанию, находит ошибки в высказываниях.');
     results.push('Проявляет интерес к занятию, взаимодействует со сверстниками и взрослым, оценивает свою работу.');
 
     return { equipment: eq, prelim: prelim, integration: integ, activities: acts, methods: methods, technologies: tech, home: home, results: results, soundWords: sw };

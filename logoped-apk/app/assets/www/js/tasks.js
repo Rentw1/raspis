@@ -659,7 +659,7 @@ var TASKS = (function () {
       type: 'riddle', title: 'Отгадай загадку', area: 'Связная речь, мышление',
       goal: 'развивать слуховое внимание, мышление, умение отгадывать загадки и доказывать отгадку',
       instr: 'Послушай загадку. Найди отгадку среди картинок и обведи её. Объясни, как догадался.',
-      note: rows.map(function (x) { return '«' + x.r[1] + '» — ' + x.ans.w; }).join(' '),
+      note: rows.map(function (x, i) { return (rows.length > 1 ? (i + 1) + ') ' : '') + '«' + String(x.r[1]).replace(/\.$/, '') + '» — ' + x.ans.w; }).join('; ') + '.',
       riddles: rows.map(function (x) { return x.r[1]; }),
       words: rows.map(function (x) { return x.ans; }), h: rows.length * rh + 10,
       draw: function (cv) {
@@ -905,24 +905,567 @@ var TASKS = (function () {
     };
   };
 
+  /* ---------- Математика (ФЭМП) на материале темы ---------- */
+  var ORD = {
+    'м': ['', 'первый', 'второй', 'третий', 'четвёртый', 'пятый', 'шестой', 'седьмой', 'восьмой', 'девятый', 'десятый'],
+    'ж': ['', 'первая', 'вторая', 'третья', 'четвёртая', 'пятая', 'шестая', 'седьмая', 'восьмая', 'девятая', 'десятая'],
+    'ср': ['', 'первое', 'второе', 'третье', 'четвёртое', 'пятое', 'шестое', 'седьмое', 'восьмое', 'девятое', 'десятое']
+  };
+  var ORD_ACC_F = ['', 'первую', 'вторую', 'третью', 'четвёртую', 'пятую', 'шестую', 'седьмую', 'восьмую', 'девятую', 'десятую'];
+  var WHICH = { 'м': 'Какой', 'ж': 'Какая', 'ср': 'Какое' };
+  function ord(n, g) { return (ORD[g] || ORD['м'])[n] || String(n); }
+  /** Слова, которые можно считать: есть род. ед. и род. мн., не «только мн. ч.» */
+  function countables(L) { return L.words.filter(function (e) { return !e.of && !e.noCount && e.g !== 'мн' && e.gs && e.gp; }); }
+  function maxNum(L) { return L.age === '4' ? 5 : (L.age === '5' ? 8 : 10); }
+  function kto(e) { return e.anim ? 'Кто нарисован' : 'Что нарисовано'; }
+  function rangeTo(a, b) { var r = []; for (var i = a; i <= b; i++) r.push(i); return r; }
+  function supAcc(e, big) {
+    var a = big ? ['самого большого', 'самую большую', 'самое большое', 'самый большой', 'самых больших', 'самые большие']
+      : ['самого маленького', 'самую маленькую', 'самое маленькое', 'самый маленький', 'самых маленьких', 'самые маленькие'];
+    if (e.g === 'ж') return a[1];
+    if (e.g === 'ср') return a[2];
+    if (e.g === 'мн') return e.anim ? a[4] : a[5];
+    return e.anim ? a[0] : a[3];
+  }
+  function sayFill(tpl, w, a) {
+    var e = DB.word(w) || {};
+    var pl = e.pl || w;
+    return String(tpl).replace(/\{W\}/g, cap(w)).replace(/\{w\}/g, w).replace(/\{PL\}/g, cap(pl)).replace(/\{pl\}/g, pl)
+      .replace(/\{A\}/g, cap(a || '')).replace(/\{a\}/g, a || '');
+  }
+
+  /** n одинаковых картинок в прямоугольнике */
+  function drawGroup(g, im, n, x, y, w, h, o) {
+    o = o || {};
+    if (n <= 0) return [];
+    var best = null;
+    for (var cols = 1; cols <= n; cols++) {
+      var rows = Math.ceil(n / cols), s = Math.min(w / cols, h / rows);
+      if (!best || s > best.s) best = { cols: cols, rows: rows, s: s };
+    }
+    var s = best.s * 0.94, spots = [];
+    var gx = x + (w - best.cols * best.s) / 2, gy = y + (h - best.rows * best.s) / 2;
+    for (var i = 0; i < n; i++) {
+      var r = Math.floor(i / best.cols), c = i % best.cols;
+      var inRow = Math.min(best.cols, n - r * best.cols);
+      var rx = gx + (best.cols - inRow) * best.s / 2 + c * best.s;
+      var px = rx + (best.s - s) / 2, py = gy + r * best.s + (best.s - s) / 2;
+      IMG.draw(g, im, px, py, s, s, { scale: o.scale || 1, label: o.label });
+      spots.push({ x: px, y: py, s: s });
+    }
+    return spots;
+  }
+  function cross(g, x, y, s) {
+    IMG.line(g, x + s * 0.12, y + s * 0.12, x + s * 0.88, y + s * 0.88, 8, '#dc2626');
+    IMG.line(g, x + s * 0.88, y + s * 0.12, x + s * 0.12, y + s * 0.88, 8, '#dc2626');
+  }
+
+  G.m_number = function (L) {
+    var list = countables(L);
+    if (list.length < 3) return null;
+    var items = U.sample(list, L.age === '4' ? 3 : 4, L.rnd);
+    var max = maxNum(L);
+    var nums = U.sample(rangeTo(1, max), items.length, L.rnd);
+    var digits = U.shuffle(nums.slice(), L.rnd);
+    var rh = 250, H = items.length * rh + 20;
+    return {
+      type: 'm_number', title: 'Сосчитай и соедини с цифрой', area: 'Математика: счёт',
+      goal: 'упражнять в счёте в пределах ' + max + ', учить соотносить количество предметов с цифрой',
+      instr: 'Сосчитай картинки в каждой рамке и соедини рамку с нужной цифрой. Скажи, сколько их, например: «' + cap(DB.count(items[0], nums[0])) + '».',
+      note: cap(items.map(function (e, i) { return DB.count(e, nums[i]) + ' — цифра ' + nums[i]; }).join('; ')) + '.',
+      words: items, h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return Promise.all(items.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          items.forEach(function (e, i) {
+            var y = 10 + i * rh;
+            IMG.roundRect(g, 20, y, 1080, rh - 24, 26, FRAME, '#fff', null, 3);
+            drawGroup(g, ims[i], nums[i], 36, y + 12, 1048, rh - 48, { scale: DB.imageOf(e).small ? 0.8 : 1, label: e.w });
+            IMG.circle(g, 1140, y + (rh - 24) / 2, 14, INK, '#fff', 4);
+            var d = digits[i];
+            IMG.circle(g, 1330, y + (rh - 24) / 2, 14, INK, '#fff', 4);
+            IMG.circle(g, 1470, y + (rh - 24) / 2, 78, ACCENT, '#eef0ff', 5);
+            IMG.text(g, String(d), 1470, y + (rh - 24) / 2 + 30, 88, { align: 'center', bold: true, color: ACCENT });
+          });
+        });
+      },
+      play: { name: 'Сосчитай и назови', lines: [['Логопед', 'Сосчитайте картинки в каждой рамке. Назовите число и предмет полным ответом.'], ['Дети', items.map(function (e, i) { return cap(DB.count(e, nums[i])) + '.'; }).join(' ')]] }
+    };
+  };
+
+  G.m_compare = function (L) {
+    var list = countables(L);
+    if (list.length < 2) return null;
+    var kinds = L.age === '4' ? ['more', 'less'] : U.shuffle(['more', 'less', 'equal'], L.rnd);
+    var top = Math.min(maxNum(L), 7);
+    var rows = kinds.map(function (k) {
+      var pair = U.sample(list, 2, L.rnd), a = pair[0], b = pair[1];
+      var x = 1 + Math.floor(L.rnd() * (top - 1)), y;
+      if (k === 'equal') y = x;
+      else {
+        var hi = 2 + Math.floor(L.rnd() * (top - 1)), lo = 1 + Math.floor(L.rnd() * (hi - 1));
+        x = k === 'more' ? hi : lo; y = k === 'more' ? lo : hi;
+      }
+      return { a: a, b: b, na: x, nb: y, sign: x > y ? '>' : (x < y ? '<' : '=') };
+    });
+    function say(r) {
+      if (r.sign === '=') return cap(r.a.gp) + ' и ' + r.b.gp + ' поровну: ' + r.na + ' = ' + r.nb;
+      return cap(r.a.gp) + ' ' + (r.sign === '>' ? 'больше' : 'меньше') + ', чем ' + r.b.gp + ': ' + r.na + ' ' + r.sign + ' ' + r.nb;
+    }
+    function ask(r) { return (r.a.anim && r.b.anim ? 'Кого' : 'Чего') + ' больше: ' + r.a.gp + ' или ' + r.b.gp + '?'; }
+    /** Ответ ребёнка на вопрос «Кого больше?»: сначала называем бо́льшую группу */
+    function answer(r) {
+      if (r.sign === '=') return cap(r.a.gp) + ' и ' + r.b.gp + ' поровну.';
+      var big = r.sign === '>' ? r.a : r.b, small = r.sign === '>' ? r.b : r.a;
+      return cap(big.gp) + ' больше, чем ' + small.gp + '.';
+    }
+    var rh = 260, H = rows.length * rh + 20, young = L.age === '4';
+    return {
+      type: 'm_compare', title: young ? 'Где больше?' : 'Больше, меньше или поровну?', area: 'Математика: сравнение',
+      goal: 'учить сравнивать группы предметов по количеству, употреблять слова «больше», «меньше», «поровну»',
+      instr: young ? 'Сосчитай картинки слева и справа. Обведи ту группу, в которой картинок больше.'
+        : 'Сосчитай картинки слева и справа и поставь в окошко знак: «больше» (>), «меньше» (<) или «равно» (=).',
+      note: young ? rows.map(function (r) { return answer(r).replace(/\.$/, '') + ' (' + Math.max(r.na, r.nb) + ' > ' + Math.min(r.na, r.nb) + ') — обвести группу ' + (r.na > r.nb ? 'слева' : 'справа'); }).join('. ') + '.'
+        : rows.map(say).join('. ') + '.',
+      words: U.uniq(rows.map(function (r) { return r.a; }).concat(rows.map(function (r) { return r.b; }))), h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        var flat = []; rows.forEach(function (r) { flat.push(r.a, r.b); });
+        return Promise.all(flat.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          rows.forEach(function (r, i) {
+            var y = 10 + i * rh, bh = rh - 24;
+            IMG.roundRect(g, 20, y, 680, bh, 26, FRAME, '#fff', null, 3);
+            drawGroup(g, ims[i * 2], r.na, 36, y + 14, 648, bh - 28, { scale: DB.imageOf(r.a).small ? 0.8 : 1, label: r.a.w });
+            IMG.roundRect(g, W - 700, y, 680, bh, 26, FRAME, '#fff', null, 3);
+            drawGroup(g, ims[i * 2 + 1], r.nb, W - 684, y + 14, 648, bh - 28, { scale: DB.imageOf(r.b).small ? 0.8 : 1, label: r.b.w });
+            if (young) IMG.text(g, '?', W / 2, y + bh / 2 + 30, 90, { align: 'center', bold: true, color: MUTED });
+            else IMG.roundRect(g, W / 2 - 70, y + bh / 2 - 70, 140, 140, 20, INK, '#fff', null, 5);
+          });
+        });
+      },
+      play: { name: young ? 'Где больше?' : 'Больше, меньше, поровну', lines: rows.map(function (r) { return ['Логопед', ask(r)]; }).concat([['Дети', rows.map(answer).join(' ')]]) }
+    };
+  };
+
+  G.m_order = function (L) {
+    var list = countables(L).filter(function (e) { return ORD[e.g]; });
+    if (list.length < 4) return null;
+    var n = Math.min(L.age === '4' ? 5 : 7, list.length);
+    var row = U.sample(list, n, L.rnd);
+    var qn = L.age === '4' ? 2 : 3;
+    var asked = U.sample(rangeTo(1, n), qn, L.rnd).sort(function (a, b) { return a - b; });
+    var mark = 1 + Math.floor(L.rnd() * n);
+    var qs = asked.map(function (p) { var e = row[p - 1]; return WHICH[e.g] + ' по счёту ' + e.w + '?'; });
+    var cw = (W - 40) / n, pic = Math.min(cw - 24, 200), H = pic + (L.captions ? 170 : 130);
+    return {
+      type: 'm_order', title: 'Какой по счёту?', area: 'Математика: порядковый счёт',
+      goal: 'упражнять в порядковом счёте, учить отвечать на вопросы «Какой по счёту?», «Который?», согласовывать порядковые числительные с существительными',
+      instr: 'Посчитай картинки слева направо. ' + qs.join(' ') + (L.age === '4' ? '' : ' Обведи ' + ORD_ACC_F[mark] + ' картинку.') +
+        (L.age === '6' ? ' Напиши в окошке под каждой картинкой её номер.' : ''),
+      note: cap(asked.map(function (p) { var e = row[p - 1]; return e.w + ' — ' + ord(p, e.g); }).join('; ')) + '.' +
+        (L.age === '4' ? '' : ' Обвести: ' + row[mark - 1].w + ' (' + ord(mark, 'ж') + ' картинка).'),
+      words: row, h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return Promise.all(row.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          IMG.line(g, 60, 26, W - 90, 26, 5, ACCENT);
+          IMG.line(g, W - 90, 26, W - 116, 10, 5, ACCENT);
+          IMG.line(g, W - 90, 26, W - 116, 42, 5, ACCENT);
+          row.forEach(function (e, i) {
+            var x = 20 + i * cw, y = 50;
+            IMG.roundRect(g, x + 6, y, cw - 12, pic + (L.captions ? 60 : 24), 22, FRAME, '#fff', null, 3);
+            IMG.draw(g, ims[i], x + (cw - pic) / 2, y + 10, pic, pic, { label: e.w, scale: DB.imageOf(e).small ? 0.8 : 1 });
+            caption(g, e, x, y + pic + 44, cw, L, 26);
+            if (L.age === '6') IMG.roundRect(g, x + cw / 2 - 34, H - 76, 68, 68, 12, INK, '#fff', null, 4);
+          });
+        });
+      },
+      play: { name: 'Какой по счёту?', lines: asked.map(function (p) { var e = row[p - 1]; return ['Логопед', WHICH[e.g] + ' по счёту ' + e.w + '?']; })
+        .concat([['Дети', asked.map(function (p) { var e = row[p - 1]; return cap(e.w) + ' — ' + ord(p, e.g) + '.'; }).join(' ')]]) }
+    };
+  };
+
+  G.m_pattern = function (L) {
+    var list = L.words.filter(function (e) { return !e.of; });
+    if (list.length < 3) return null;
+    var kinds = L.age === '4' ? ['AB', 'AB'] : (L.age === '5' ? ['AB', 'AAB'] : ['ABC', 'AABB']);
+    var rows = kinds.map(function (k) {
+      var letters = U.uniq(k.split('')), pick = U.sample(list, letters.length, L.rnd), map = {};
+      letters.forEach(function (ch, i) { map[ch] = pick[i]; });
+      var len = k === 'ABC' ? 9 : 8, blanks = L.age === '4' ? 2 : 3;
+      var seq = rangeTo(0, len - 1).map(function (i) { return map[k[i % k.length]]; });
+      return { seq: seq, blanks: blanks, len: len };
+    });
+    var cw0 = (W - 40) / 9, pic = cw0 - 22, rh = pic + 50, H = rows.length * rh + 20;
+    function show(r) { return r.seq.slice(0, r.len - r.blanks).map(function (e) { return e.w; }).join(', '); }
+    function next(r) { return r.seq.slice(r.len - r.blanks).map(function (e) { return e.w; }).join(', '); }
+    return {
+      type: 'm_pattern', title: 'Продолжи ряд', area: 'Математика: закономерность',
+      goal: 'учить находить закономерность в ряду предметов и продолжать её, развивать логическое мышление',
+      instr: 'Посмотри, как чередуются картинки. Что будет дальше? Назови и дорисуй в пустых клеточках недостающие картинки.',
+      note: rows.map(function (r, i) { return (i + 1) + ') ' + show(r) + '… Дальше: ' + next(r) + '.'; }).join(' '),
+      words: U.uniq([].concat.apply([], rows.map(function (r) { return r.seq; }))), h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        var flat = []; rows.forEach(function (r) { flat = flat.concat(r.seq); });
+        return Promise.all(flat.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          var k = 0;
+          rows.forEach(function (r, ri) {
+            var y = 10 + ri * rh, cw = (W - 40) / r.len;
+            r.seq.forEach(function (e, i) {
+              var x = 20 + i * cw, blank = i >= r.len - r.blanks;
+              IMG.roundRect(g, x + 4, y, cw - 8, rh - 22, 18, blank ? ACCENT : FRAME, blank ? '#fbfbff' : '#fff', blank ? [14, 10] : null, blank ? 4 : 3);
+              if (!blank) IMG.draw(g, ims[k], x + (cw - pic) / 2, y + 10, pic, pic, { label: e.w, scale: DB.imageOf(e).small ? 0.8 : 1 });
+              else IMG.text(g, '?', x + cw / 2, y + (rh - 22) / 2 + 22, 64, { align: 'center', bold: true, color: '#c7c9e0' });
+              k++;
+            });
+          });
+        });
+      },
+      play: { name: 'Что будет дальше?', lines: rows.map(function (r) { return ['Логопед', 'Продолжите ряд: ' + show(r) + '…']; })
+        .concat([['Дети', rows.map(function (r) { return cap(next(r)) + '.'; }).join(' ')]]) }
+    };
+  };
+
+  G.m_size = function (L) {
+    var list = L.words.filter(function (e) { return !e.of; });
+    if (!list.length) return null;
+    var e = U.pick(list, L.rnd);
+    var n = L.age === '4' ? 3 : (L.age === '5' ? 4 : 5);
+    var scales = rangeTo(0, n - 1).map(function (i) { return 0.42 + i * (0.58 / (n - 1)); });
+    var order = U.shuffle(rangeTo(0, n - 1), L.rnd);
+    var young = L.age === '4';
+    var cw = (W - 40) / n, box = Math.min(cw - 30, 300), H = box + (young ? 40 : 130);
+    var small = order.indexOf(0), big = order.indexOf(n - 1);
+    var rank = order.map(function (s) { return s + 1; });
+    return {
+      type: 'm_size', title: young ? 'Большой и маленький' : 'От маленького к большому', area: 'Математика: величина',
+      goal: 'учить сравнивать предметы по величине, раскладывать их в порядке возрастания, употреблять слова «большой», «поменьше», «самый маленький»',
+      instr: young ? 'Обведи ' + supAcc(e, true) + ' ' + DB.acc(e) + ', а ' + supAcc(e, false) + ' зачеркни.'
+        : 'Пронумеруй картинки от самой маленькой до самой большой: напиши в кружках 1, 2, 3…',
+      note: young ? 'Самая большая — ' + (big + 1) + '-я картинка слева, самая маленькая — ' + (small + 1) + '-я.'
+        : 'Номера слева направо: ' + rank.join(', ') + '.',
+      words: [e], h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return IMG.word(e, 'c').then(function (im) {
+          order.forEach(function (s, i) {
+            var x = 20 + i * cw + (cw - box) / 2;
+            IMG.draw(g, im, x, 10, box, box, { scale: scales[s], alignBottom: true, label: e.w });
+            if (!young) IMG.circle(g, x + box / 2, box + 70, 40, INK, '#fff', 4);
+          });
+          IMG.line(g, 20, box + 16, W - 20, box + 16, 3, FRAME);
+        });
+      },
+      play: { name: 'Большой — маленький', lines: [['Логопед', 'Покажите ' + supAcc(e, true) + ' ' + DB.acc(e) + '. А теперь ' + supAcc(e, false) + '. Разложите картинки от самой маленькой до самой большой.'],
+        ['Дети', 'Показывают и раскладывают картинки по величине, объясняют: «Это самая маленькая картинка, эта больше, а эта самая большая».']] }
+    };
+  };
+
+  G.m_sum = function (L) {
+    if (L.age === '4') return null;
+    var list = countables(L);
+    if (!list.length) return null;
+    var max = L.age === '5' ? 5 : 10;
+    var ws = U.sample(list, 2, L.rnd);
+    var e1 = ws[0], e2 = ws[1] || ws[0];
+    var a = 1 + Math.floor(L.rnd() * (max - 2)), b = 1 + Math.floor(L.rnd() * (max - a));
+    var probs = [{ op: '+', e: e1, a: a, b: b, r: a + b }];
+    if (L.age === '6') {
+      var n = 4 + Math.floor(L.rnd() * (max - 3)), k = 2 + Math.floor(L.rnd() * (n - 2));
+      probs.push({ op: '−', e: e2, a: n, b: k, r: n - k });
+    } else {
+      var c = 1 + Math.floor(L.rnd() * (max - 2)), d = 1 + Math.floor(L.rnd() * (max - c));
+      probs.push({ op: '+', e: e2, a: c, b: d, r: c + d });
+    }
+    function textOf(p) {
+      if (p.op === '+') return cap(DB.count(p.e, p.a)) + ' и ещё ' + DB.count(p.e, p.b) + '. Сколько всего ' + p.e.gp + '?';
+      return 'Нарисовано ' + DB.count(p.e, p.a) + '. ' + cap(U.numWord(p.b, 'ж')) + ' ' + U.plural(p.b, 'картинку', 'картинки', 'картинок') + ' зачеркнули. Сколько ' + p.e.gp + ' осталось?';
+    }
+    function eq(p) { return p.a + ' ' + p.op + ' ' + p.b + ' = ' + p.r; }
+    var rh = 300, H = probs.length * rh + 10;
+    return {
+      type: 'm_sum', title: 'Реши задачу', area: 'Математика: сложение и вычитание',
+      goal: 'учить решать простые задачи на ' + (L.age === '6' ? 'сложение и вычитание' : 'сложение') + ' в пределах ' + max + ' с опорой на картинки, отвечать полным ответом',
+      instr: 'Послушай задачу, посмотри на картинки и запиши ответ в окошко. ' + probs.map(function (p, i) { return (i + 1) + ') ' + textOf(p); }).join(' '),
+      note: probs.map(function (p) { return eq(p) + ' (' + DB.count(p.e, p.r) + ')'; }).join('; ') + '.',
+      words: U.uniq([e1, e2]), h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return Promise.all(probs.map(function (p) { return IMG.word(p.e, 'c'); })).then(function (ims) {
+          probs.forEach(function (p, i) {
+            var y = 10 + i * rh, bh = rh - 30, sc = DB.imageOf(p.e).small ? 0.8 : 1;
+            if (p.op === '+') {
+              IMG.roundRect(g, 20, y, 560, bh, 24, FRAME, '#fff', null, 3);
+              drawGroup(g, ims[i], p.a, 34, y + 12, 532, bh - 24, { scale: sc, label: p.e.w });
+              IMG.text(g, '+', 640, y + bh / 2 + 34, 110, { align: 'center', bold: true, color: ACCENT });
+              IMG.roundRect(g, 700, y, 480, bh, 24, FRAME, '#fff', null, 3);
+              drawGroup(g, ims[i], p.b, 714, y + 12, 452, bh - 24, { scale: sc, label: p.e.w });
+            } else {
+              IMG.roundRect(g, 20, y, 1160, bh, 24, FRAME, '#fff', null, 3);
+              var spots = drawGroup(g, ims[i], p.a, 34, y + 12, 1132, bh - 24, { scale: sc, label: p.e.w });
+              spots.slice(p.a - p.b).forEach(function (s) { cross(g, s.x, s.y, s.s); });
+            }
+            IMG.text(g, '=', 1250, y + bh / 2 + 34, 110, { align: 'center', bold: true, color: ACCENT });
+            IMG.roundRect(g, 1330, y + bh / 2 - 90, 180, 180, 24, INK, '#fff', null, 5);
+            if (L.age === '6') IMG.text(g, p.a + ' ' + p.op + ' ' + p.b + ' =', 1420, y + bh + 22, 30, { align: 'center', color: MUTED });
+          });
+        });
+      },
+      play: { name: 'Реши задачу', lines: probs.map(function (p) { return ['Логопед', 'Послушайте задачу. ' + textOf(p)]; })
+        .concat([['Дети', probs.map(function (p) { return cap(DB.count(p.e, p.r)) + '. ' + eq(p) + '.'; }).join(' ')]]) }
+    };
+  };
+
+  G.m_space = function (L) {
+    var list = L.words.filter(function (e) { return !e.of; });
+    if (list.length < 4) return null;
+    var rows = 2, cols = 2;
+    if (L.age !== '4') { if (list.length >= 9) { rows = 3; cols = 3; } else if (list.length >= 6) { rows = 2; cols = 3; } }
+    var cells = U.sample(list, rows * cols, L.rnd), grid = [];
+    for (var r = 0; r < rows; r++) grid.push(cells.slice(r * cols, (r + 1) * cols));
+    var qs = [], used = {};
+    function add(q, ans) { if (ans && !used[q] && !used['=' + ans.w] && qs.length < (L.age === '4' ? 3 : 4)) { used[q] = used['=' + ans.w] = 1; qs.push({ q: q, a: ans }); } }
+    if (rows === 3 && cols === 3) add(kto(grid[1][1]) + ' в центре?', grid[1][1]);
+    /* только вопросы с единственным ответом: соседняя клетка в том же ряду (столбце), и других клеток в этом направлении нет */
+    var cand = [];
+    for (r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+      var ref = grid[r][c];
+      if (!ref.gs) continue;
+      if (c === 1) cand.push(['left', kto(grid[r][0]) + ' слева от ' + ref.gs + '?', grid[r][0]]);
+      if (c === cols - 2) cand.push(['right', kto(grid[r][cols - 1]) + ' справа от ' + ref.gs + '?', grid[r][cols - 1]]);
+      if (L.age !== '4' && r === 1) cand.push(['up', kto(grid[0][c]) + ' выше ' + ref.gs + '?', grid[0][c]]);
+      if (L.age !== '4' && r === rows - 2) cand.push(['down', kto(grid[rows - 1][c]) + ' ниже ' + ref.gs + '?', grid[rows - 1][c]]);
+    }
+    if (L.age !== '4') {
+      cand.push(['corner', kto(grid[0][cols - 1]) + ' в правом верхнем углу?', grid[0][cols - 1]]);
+      cand.push(['corner', kto(grid[rows - 1][0]) + ' в левом нижнем углу?', grid[rows - 1][0]]);
+    }
+    cand = U.shuffle(cand, L.rnd);
+    var kinds = {};
+    cand.forEach(function (x) { if (!kinds[x[0]]) { kinds[x[0]] = 1; add(x[1], x[2]); } });
+    cand.forEach(function (x) { add(x[1], x[2]); });
+    function where(x) { return x.q.replace(/^(Кто нарисован|Что нарисовано) /, '').replace(/\?$/, ''); }
+    var cw = (W - 40) / cols, ch = Math.min(cw, 300), H = rows * ch + 30;
+    return {
+      type: 'm_space', title: 'Где что нарисовано?', area: 'Математика: ориентировка',
+      goal: 'учить ориентироваться на листе бумаги, употреблять слова «слева», «справа», «выше», «в центре», «в углу»',
+      instr: 'Рассмотри картинки и ответь на вопросы. ' + qs.map(function (x) { return x.q; }).join(' '),
+      note: cap(qs.map(function (x) { return where(x) + ' — ' + x.a.w; }).join('; ')) + '.',
+      words: cells, h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return Promise.all(cells.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          IMG.roundRect(g, 14, 10, W - 28, rows * ch + 10, 26, INK, '#fff', null, 5);
+          for (var rr = 0; rr < rows; rr++) for (var cc = 0; cc < cols; cc++) {
+            var e = grid[rr][cc], x = 20 + cc * cw, y = 15 + rr * ch;
+            if (cc > 0) IMG.line(g, x, 15, x, 15 + rows * ch, 3, FRAME);
+            if (rr > 0) IMG.line(g, 20, y, W - 20, y, 3, FRAME);
+            var p = ch - 40;
+            IMG.draw(g, ims[rr * cols + cc], x + (cw - p) / 2, y + 10, p, p - (L.captions ? 30 : 0), { label: e.w, scale: DB.imageOf(e).small ? 0.8 : 1 });
+            caption(g, e, x, y + ch - 14, cw, L, 26);
+          }
+        });
+      },
+      play: { name: 'Где что нарисовано?', lines: qs.map(function (x) { return ['Логопед', x.q]; })
+        .concat([['Дети', qs.map(function (x) { return cap(where(x)) + ' — ' + x.a.w + '.'; }).join(' ')]]) }
+    };
+  };
+
+  /* ---------- Окружающий мир на материале темы ---------- */
+  G.w_true = function (L) {
+    if (L.age === '4') return null;
+    var games = (L.theme.talk || []).filter(function (t) {
+      return /где|живёт|растёт|ест|питается|любит|работает|нужен|нужна|нужно|делает/i.test(t.name + ' ' + t.qt) && !/цвет|почему/i.test(t.name + ' ' + t.qt) && t.items.length >= 3;
+    });
+    var pool = [];
+    games.forEach(function (t) {
+      t.items.forEach(function (it) {
+        var e = E(it[0]);
+        if (!e || !IMG.hasPicture(e)) return;
+        var wrong = t.items.filter(function (o) { return o[1] !== it[1] && !t.items.some(function (z) { return z[0] === it[0] && z[1] === o[1]; }); });
+        pool.push({ t: t, it: it, e: e, wrong: wrong });
+      });
+    });
+    if (pool.length < 4) return null;
+    var pick = U.sample(pool, 4, L.rnd);
+    var rows = pick.map(function (p, i) {
+      var truth = sayFill(p.t.tpl, p.it[0], p.it[1]);
+      if (i % 2 === 1 && p.wrong.length) {
+        var w = U.pick(p.wrong, L.rnd);
+        return { e: p.e, text: sayFill(p.t.tpl, p.it[0], w[1]), ok: false, fix: truth };
+      }
+      return { e: p.e, text: truth, ok: true };
+    });
+    rows = U.shuffle(rows, L.rnd);
+    /** Предложение внутри кавычек посреди фразы — без конечной точки */
+    function quote(s) { return String(s).replace(/\.$/, ''); }
+    var rh = 190, H = rows.length * rh + 10;
+    return {
+      type: 'w_true', title: 'Верно или неверно?', area: 'Окружающий мир',
+      goal: 'уточнять представления детей об объектах темы, учить находить ошибку и доказывать своё мнение',
+      instr: 'Послушай, что говорит взрослый. Если это правда — обведи галочку, если неправда — обведи крестик и скажи, как правильно.',
+      note: rows.map(function (r, i) { return (i + 1) + ') «' + quote(r.text) + '» — ' + (r.ok ? 'верно' : 'неверно, правильно: «' + quote(r.fix) + '»'); }).join('; ') + '.',
+      statements: rows.map(function (r) { return r.text; }),
+      words: U.uniq(rows.map(function (r) { return r.e; })), h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        return Promise.all(rows.map(function (r) { return IMG.word(r.e, 'c'); })).then(function (ims) {
+          rows.forEach(function (r, i) {
+            var y = 5 + i * rh, bh = rh - 20;
+            IMG.roundRect(g, 20, y, W - 40, bh, 24, FRAME, '#fff', null, 3);
+            IMG.draw(g, ims[i], 40, y + 10, bh - 20, bh - 20, { label: r.e.w, scale: DB.imageOf(r.e).small ? 0.8 : 1 });
+            IMG.text(g, String(i + 1), 40 + bh, y + bh / 2 + 16, 44, { bold: true, color: ACCENT });
+            IMG.wrap(g, r.text, 110 + bh, y + 56, W - 560 - bh, 34, 42, { color: INK });
+            var bx = W - 380;
+            IMG.roundRect(g, bx, y + 20, 150, bh - 40, 20, '#16a34a', '#f0fdf4', null, 4);
+            IMG.line(g, bx + 40, y + bh / 2, bx + 68, y + bh / 2 + 28, 10, '#16a34a');
+            IMG.line(g, bx + 68, y + bh / 2 + 28, bx + 112, y + bh / 2 - 30, 10, '#16a34a');
+            var cx = W - 200;
+            IMG.roundRect(g, cx, y + 20, 150, bh - 40, 20, '#dc2626', '#fef2f2', null, 4);
+            IMG.line(g, cx + 45, y + bh / 2 - 32, cx + 105, y + bh / 2 + 32, 10, '#dc2626');
+            IMG.line(g, cx + 105, y + bh / 2 - 32, cx + 45, y + bh / 2 + 32, 10, '#dc2626');
+          });
+        });
+      },
+      play: { name: 'Верно или неверно?', lines: rows.map(function (r) { return ['Логопед', 'Верно или нет: «' + quote(r.text) + '»?']; })
+        .concat([['Дети', rows.map(function (r) { return r.ok ? 'Верно!' : 'Неверно! ' + r.fix; }).join(' ')]]) }
+    };
+  };
+
+  G.w_describe = function (L) {
+    var all = L.words.filter(function (e) { return !e.of; });
+    var list = all.filter(function (e) { return (e.adj || []).length >= 2 && (e.v || []).length >= 1; });
+    if (list.length < 2 || all.length < 3) return null;
+    var chosen = U.sample(list, L.age === '4' ? 1 : 2, L.rnd);
+    var rows = chosen.map(function (e) {
+      var others = U.sample(all.filter(function (x) { return x.w !== e.w; }), 2, L.rnd);
+      return { e: e, opts: U.shuffle([e].concat(others), L.rnd), text: cap(e.adj.slice(0, 3).join(', ')) + '. ' + cap(e.v.slice(0, 2).join(', ')) + '. ' + (e.anim ? 'Кто это?' : 'Что это?') };
+    });
+    var rh = 400;
+    return {
+      type: 'w_describe', title: 'Узнай по описанию', area: 'Окружающий мир',
+      goal: 'учить узнавать предмет по описанию его признаков и действий, развивать внимание и мышление',
+      instr: 'Послушай описание. Найди среди картинок, о ком (о чём) говорится, и обведи. Докажи свой ответ.',
+      note: rows.map(function (r) { return '«' + r.text + '» — ' + r.e.w; }).join('; ') + '.',
+      riddles: rows.map(function (r) { return r.text; }),
+      words: rows.map(function (r) { return r.e; }), h: rows.length * rh + 10,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        var flat = []; rows.forEach(function (r) { flat = flat.concat(r.opts); });
+        return Promise.all(flat.map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          rows.forEach(function (r, ri) {
+            var y = 5 + ri * rh;
+            IMG.roundRect(g, 20, y, W - 40, rh - 20, 30, FRAME, '#fff', null, 3);
+            var th = IMG.wrap(g, '«' + r.text + '»', 60, y + 60, W - 120, 38, 48, { color: INK, italic: true });
+            r.opts.forEach(function (e, i) {
+              var cw = (W - 80) / 3;
+              IMG.draw(g, ims[ri * 3 + i], 40 + i * cw + (cw - 230) / 2, y + 40 + th, 230, rh - 90 - th, { label: e.w, scale: DB.imageOf(e).small ? 0.75 : 1 });
+            });
+          });
+        });
+      },
+      play: { name: 'Узнай по описанию', lines: rows.map(function (r) { return ['Логопед', '«' + r.text + '»']; })
+        .concat([['Дети', rows.map(function (r) { return 'Это ' + r.e.w + '!'; }).join(' ')]]) }
+    };
+  };
+
+  G.w_diff = function (L) {
+    var list = L.words.filter(function (e) { return !e.of; });
+    if (list.length < 5) return null;
+    var nObj = L.age === '4' ? 5 : Math.min(7, list.length);
+    var nDiff = L.age === '4' ? 2 : (L.age === '5' ? 3 : 4);
+    var objs = U.sample(list, nObj, L.rnd);
+    var spare = list.filter(function (e) { return objs.indexOf(e) < 0; });
+    var rnd = U.rng(Math.floor(L.rnd() * 1e9));
+    var PW = W - 60, PH = 470, sz = 170, spots = [];
+    objs.forEach(function () {
+      var p, tries = 0;
+      do { p = { x: 20 + rnd() * (PW - sz - 40), y: 10 + rnd() * (PH - sz - 20) }; tries++; }
+      while (tries < 300 && spots.some(function (q) { return Math.abs(q.x - p.x) < sz * 0.95 && Math.abs(q.y - p.y) < sz * 0.95; }));
+      spots.push(p);
+    });
+    var types = ['missing', 'replace', 'bigger', 'flip'];
+    var changes = [], idx = U.shuffle(rangeTo(0, nObj - 1), L.rnd);
+    for (var i = 0; i < idx.length && changes.length < nDiff; i++) {
+      var e = objs[idx[i]];
+      var opts = types.filter(function (t) {
+        if (t === 'missing') return !!e.gs && !changes.some(function (c) { return c.type === 'missing'; });
+        if (t === 'replace') return !!e.gs && spare.length > 0;
+        if (t === 'flip') return !!e.anim;
+        return true;
+      });
+      var fresh = opts.filter(function (x) { return !changes.some(function (c) { return c.type === x; }); });
+      var t = fresh.length ? fresh[Math.floor(rnd() * fresh.length)] : opts[changes.length % opts.length];
+      var ch = { i: idx[i], type: t, e: e };
+      if (t === 'replace') { ch.r = spare.splice(Math.floor(rnd() * spare.length), 1)[0]; }
+      changes.push(ch);
+    }
+    function sayChange(c) {
+      var e = c.e, g4 = { 'м': 0, 'ж': 1, 'ср': 2, 'мн': 3 }[e.g] || 0;
+      if (c.type === 'missing') return 'внизу нет ' + e.gs;
+      if (c.type === 'replace') return 'вместо ' + e.gs + ' — ' + c.r.w;
+      if (c.type === 'bigger') return e.w + ' ' + ['стал', 'стала', 'стало', 'стали'][g4] + ' больше';
+      return e.w + ' ' + ['повернулся', 'повернулась', 'повернулось', 'повернулись'][g4] + ' в другую сторону';
+    }
+    var H = PH * 2 + 60;
+    return {
+      type: 'w_diff', title: 'Найди отличия', area: 'Внимание, окружающий мир',
+      goal: 'развивать зрительное внимание, учить сравнивать изображения и называть различия полным ответом',
+      instr: 'Сравни две картинки. Найди ' + nDiff + ' ' + U.plural(nDiff, 'отличие', 'отличия', 'отличий') + ' и обведи их на нижней картинке. Расскажи, что изменилось.',
+      note: cap(changes.map(sayChange).join('; ')) + '.',
+      words: objs.concat(changes.filter(function (c) { return c.r; }).map(function (c) { return c.r; })), h: H,
+      draw: function (cv) {
+        var g = cv.getContext('2d');
+        var extra = changes.filter(function (c) { return c.r; }).map(function (c) { return c.r; });
+        return Promise.all(objs.concat(extra).map(function (e) { return IMG.word(e, 'c'); })).then(function (ims) {
+          [0, 1].forEach(function (panel) {
+            var oy = 10 + panel * (PH + 40);
+            IMG.roundRect(g, 20, oy, W - 40, PH, 30, INK, panel ? '#fffdf5' : '#fbfcff', null, 4);
+            objs.forEach(function (e, k) {
+              var c = panel ? changes.filter(function (x) { return x.i === k; })[0] : null;
+              if (c && c.type === 'missing') return;
+              var im = ims[k], s = sz, dx = 0, flip = false;
+              if (c && c.type === 'replace') im = ims[objs.length + extra.indexOf(c.r)];
+              if (c && c.type === 'bigger') { s = sz * 1.35; dx = -sz * 0.17; }
+              if (c && c.type === 'flip') flip = true;
+              IMG.draw(g, im, 30 + spots[k].x + dx, oy + spots[k].y + dx, s, s, { flip: flip, label: e.w });
+            });
+          });
+        });
+      },
+      play: { name: 'Найди отличия', lines: [['Логопед', 'Сравните две картинки. Что изменилось на нижней картинке?'], ['Дети', changes.map(function (c) { return cap(sayChange(c)); }).join('. ') + '.']] }
+    };
+  };
+
   /* ---------- каталог и подбор ---------- */
+  /** Области заданий: речь, математика (ФЭМП), окружающий мир, моторика и внимание */
+  var AREAS = [['speech', 'Речь'], ['math', 'Математика'], ['world', 'Окружающий мир'], ['motor', 'Моторика и внимание']];
   var CATALOG = [
-    ['name', 'Назови и покажи'], ['odd', 'Четвёртый лишний'], ['groups', 'Разложи по группам'],
-    ['many', 'Один — много'], ['count', 'Посчитай'], ['find', 'Найди и посчитай'], ['dim', 'Назови ласково'],
-    ['baby', 'У кого кто? (детёныши)'], ['food', 'Кто что ест? / Кому что нужно?'], ['home', 'Кто где живёт?'], ['tool', 'Кому что нужно?'],
-    ['forms', 'Какой? (словообразование)'], ['poss', 'Чей? Чья? Чьё?'], ['prep', 'Предлоги: где?'],
-    ['hear', 'Поймай звук'], ['sound', 'Где спрятался звук?'], ['syll', 'Слоги'], ['first', 'Первый звук'],
-    ['riddle', 'Отгадай загадку'], ['mnemo', 'Рассказ по схеме'], ['sinkvein', 'Синквейн'],
-    ['maze', 'Лабиринт'], ['trace', 'Обведи дорожки'], ['shadow', 'Найди тень'], ['overlap', 'Кто спрятался?'],
-    ['color', 'Раскрась'], ['puzzle', 'Разрезная картинка']
+    ['name', 'Назови и покажи', ['speech', 'world']], ['odd', 'Четвёртый лишний', ['world', 'speech']], ['groups', 'Разложи по группам', ['world']],
+    ['many', 'Один — много', ['speech']], ['count', 'Посчитай', ['speech', 'math']], ['find', 'Найди и посчитай', ['math', 'speech']], ['dim', 'Назови ласково', ['speech']],
+    ['baby', 'У кого кто? (детёныши)', ['world', 'speech']], ['food', 'Кто что ест? / Кому что нужно?', ['world', 'speech']], ['home', 'Кто где живёт?', ['world']], ['tool', 'Кому что нужно?', ['world']],
+    ['forms', 'Какой? (словообразование)', ['speech']], ['poss', 'Чей? Чья? Чьё?', ['speech']], ['prep', 'Предлоги: где?', ['speech', 'math']],
+    ['hear', 'Поймай звук', ['speech']], ['sound', 'Где спрятался звук?', ['speech']], ['syll', 'Слоги', ['speech']], ['first', 'Первый звук', ['speech']],
+    ['riddle', 'Отгадай загадку', ['speech', 'world']], ['mnemo', 'Рассказ по схеме', ['speech']], ['sinkvein', 'Синквейн', ['speech']],
+    ['m_number', 'Сосчитай и соедини с цифрой', ['math']], ['m_compare', 'Больше, меньше, поровну', ['math']], ['m_order', 'Какой по счёту?', ['math']],
+    ['m_pattern', 'Продолжи ряд (закономерность)', ['math']], ['m_size', 'Большой — маленький (величина)', ['math']], ['m_sum', 'Реши задачу', ['math']],
+    ['m_space', 'Где что нарисовано? (ориентировка)', ['math']],
+    ['w_true', 'Верно или неверно?', ['world']], ['w_describe', 'Узнай по описанию', ['world', 'speech']], ['w_diff', 'Найди отличия', ['world', 'motor']],
+    ['maze', 'Лабиринт', ['motor']], ['trace', 'Обведи дорожки', ['motor']], ['shadow', 'Найди тень', ['motor']], ['overlap', 'Кто спрятался?', ['motor']],
+    ['color', 'Раскрась', ['motor']], ['puzzle', 'Разрезная картинка', ['motor']]
   ];
+  function areasOf(id) { var c = CATALOG.filter(function (x) { return x[0] === id; })[0]; return c ? c[2] : []; }
 
   var PRESET = {
     complex: ['name', 'sound', 'hear', 'many', 'count', 'baby', 'food', 'odd', 'mnemo', 'maze', 'color'],
     lex: ['name', 'odd', 'many', 'count', 'dim', 'baby', 'food', 'forms', 'poss', 'groups', 'prep', 'find'],
     sound: ['hear', 'sound', 'syll', 'first', 'riddle', 'trace', 'color'],
     coherent: ['name', 'riddle', 'mnemo', 'sinkvein', 'food', 'prep', 'color'],
-    literacy: ['sound', 'hear', 'syll', 'first', 'riddle', 'maze']
+    literacy: ['sound', 'hear', 'syll', 'first', 'riddle', 'maze'],
+    math: ['m_number', 'm_compare', 'm_order', 'm_sum', 'm_pattern', 'm_space', 'm_size', 'find', 'maze', 'color'],
+    world: ['name', 'groups', 'odd', 'food', 'home', 'baby', 'tool', 'w_true', 'w_describe', 'w_diff', 'riddle', 'color'],
+    mixed: ['name', 'sound', 'many', 'm_number', 'm_compare', 'groups', 'food', 'w_describe', 'm_pattern', 'maze', 'color']
   };
 
   /** Какие задания возможны для урока (с учётом темы, слов, звука, возраста) */
@@ -968,5 +1511,5 @@ var TASKS = (function () {
     return Promise.resolve(t.draw(cv)).then(function () { return cv; });
   }
 
-  return { G: G, CATALOG: CATALOG, PRESET: PRESET, available: available, defaults: defaults, build: build, render: render, W: W, withPic: withPic, themeWords: themeWords };
+  return { G: G, CATALOG: CATALOG, AREAS: AREAS, areasOf: areasOf, PRESET: PRESET, available: available, defaults: defaults, build: build, render: render, W: W, withPic: withPic, themeWords: themeWords };
 })();
