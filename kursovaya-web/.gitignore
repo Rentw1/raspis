@@ -1,0 +1,6 @@
+node_modules/
+dist/
+server/web/
+server/bin/
+*.log
+test-output/

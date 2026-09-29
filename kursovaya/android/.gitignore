@@ -1,0 +1,15 @@
+gradle-wrapper.jar
+/.gradle
+/captures/
+/gradlew
+/gradlew.bat
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# Ключ подписи этого приложения хранится в репозитории намеренно (как у «Конструктора занятий»):
+# так новые версии APK ставятся поверх старых с сохранением данных. Для публикации в магазинах
+# замените его своим ключом и не публикуйте его (https://flutter.dev/to/reference-keystore).
+**/*.keystore
+**/*.jks
+!app/kursovaya-release.jks

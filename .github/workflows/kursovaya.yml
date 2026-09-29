@@ -1,0 +1,126 @@
+name: Курсовая ЛТЭТ (Flutter)
+
+on:
+  push:
+    paths:
+      - 'kursovaya/**'
+      - '.github/workflows/kursovaya.yml'
+  pull_request:
+    paths:
+      - 'kursovaya/**'
+      - '.github/workflows/kursovaya.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kursovaya-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: kursovaya
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Анализ кода
+        run: flutter analyze
+
+      - name: Тесты
+        run: flutter test
+
+      - name: Сборка APK
+        run: flutter build apk --release
+
+      - name: Имя файла и проверка подписи
+        run: |
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//')
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Kursovaya-LTET-v${VER}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Kursovaya-LTET.apk
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$APKSIGNER" verify --print-certs dist/Kursovaya-LTET.apk | head -5
+          echo "VER=${VER}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kursovaya-LTET-apk
+          path: kursovaya/dist/*.apk
+          if-no-files-found: error
+
+      - name: Выпуск kursovaya-latest
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete kursovaya-latest --yes --cleanup-tag || true
+          gh release create kursovaya-latest dist/Kursovaya-LTET.apk "dist/Kursovaya-LTET-v${VER}.apk" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Курсовая ЛТЭТ v${VER} — последняя сборка" \
+            --notes "Android: скачайте Kursovaya-LTET.apk, откройте на телефоне и разрешите установку. Сборка из ${GITHUB_REF_NAME} (${GITHUB_SHA::7})."
+
+  ios:
+    name: iOS (без подписи)
+    needs: android
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: kursovaya
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Сборка iOS
+        run: flutter build ios --release --no-codesign
+
+      - name: Упаковка IPA
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/ios/iphoneos/Runner.app dist/Payload/
+          cd dist && zip -qr Kursovaya-LTET-unsigned.ipa Payload && rm -rf Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kursovaya-LTET-ios
+          path: kursovaya/dist/*.ipa
+          if-no-files-found: error
+
+      - name: Добавить IPA в выпуск
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload kursovaya-latest dist/Kursovaya-LTET-unsigned.ipa --clobber
